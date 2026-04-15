@@ -4,9 +4,24 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
+const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:5176'
+].filter(Boolean);
+
 app.use(cors({
-  origin: allowedOrigin,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));

@@ -5,8 +5,7 @@ import {
   FaCheckCircle, FaClock, FaTimesCircle, FaCheckDouble, FaHistory, 
   FaUserCircle, FaFingerprint, FaBars, FaTimes, FaSearch
 } from 'react-icons/fa';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_URL } from '../config';
 
 export default function Dashboard() {
   const navigate = useNavigate();

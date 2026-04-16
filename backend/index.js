@@ -93,7 +93,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Fetch stats for the dashboard accurately from the database
+// Fetch stats for the dashboard and sidebar indicators
 app.get('/api/stats', async (req, res) => {
   try {
     // 1. Total Credited: Sum only for loans CREDITED in the CURRENT MONTH
@@ -121,7 +121,7 @@ app.get('/api/stats', async (req, res) => {
     if (pendingError) throw pendingError;
     const pendingDisbursement = (pendingLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
 
-    // 3. Pending Sanction: Count of loans in APPROVED state (Waiting for Manager)
+    // 3. Pending Sanction: Member count (Waiting for Manager)
     const { count: memberCount, error: memberError } = await supabase
       .from('loans')
       .select('*', { count: 'exact', head: true })
@@ -129,10 +129,34 @@ app.get('/api/stats', async (req, res) => {
 
     if (memberError) throw memberError;
 
+    // 4. Sidebar Counts (Center based)
+    // Pending Sanction Centers
+    const { data: psLoans } = await supabase
+      .from('loans')
+      .select('center_id')
+      .eq('status', 'APPROVED');
+    const pendingSanctionCenters = [...new Set(psLoans?.map(l => l.center_id).filter(Boolean))].length;
+
+    // Pending Schedule Centers
+    const { data: crLoans } = await supabase
+      .from('loans')
+      .select('center_id')
+      .eq('status', 'CREDITED');
+    
+    const { data: schData } = await supabase
+      .from('collection_schedules')
+      .select('center_id');
+    const scheduledCenterIds = new Set(schData?.map(s => s.center_id).filter(Boolean));
+    
+    const pendingScheduleCenters = [...new Set(crLoans?.map(l => l.center_id).filter(Boolean))]
+      .filter(id => !scheduledCenterIds.has(id)).length;
+
     res.json({
       totalDisbursed: totalCredited,
       pendingDisbursement: pendingDisbursement,
-      totalApprovedMembers: memberCount || 0
+      totalApprovedMembers: memberCount || 0,
+      pendingSanctionCount: pendingSanctionCenters,
+      pendingScheduleCount: pendingScheduleCenters
     });
   } catch (error) {
     console.error('Stats error:', error);
@@ -680,6 +704,53 @@ app.get('/api/centers/:id/members', async (req, res) => {
     res.json(members);
   } catch (error) {
     console.error('Fetch center members error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fetch performance stats for each staff member
+app.get('/api/staff/performance', async (req, res) => {
+  try {
+    // 1. Fetch all staff members
+    const { data: staffList, error: staffError } = await supabase
+      .from('staff')
+      .select('staff_id, name, role');
+    if (staffError) throw staffError;
+
+    // 2. Fetch all centers and their assigned staff
+    const { data: centers, error: centerError } = await supabase
+      .from('centers')
+      .select('id, staff_id');
+    if (centerError) throw centerError;
+
+    // 3. Fetch all collection schedules (only the needed columns for aggregation)
+    const { data: schedules, error: schError } = await supabase
+      .from('collection_schedules')
+      .select('center_id, amount');
+    if (schError) throw schError;
+
+    // 4. Aggregate performance data
+    const staffPerformance = staffList.map(staff => {
+      // Find IDs of centers managed by this specific staff member
+      const managedCenterIds = centers
+        .filter(c => c.staff_id === staff.staff_id)
+        .map(c => c.id);
+      
+      // Calculate total scheduled collection amount for those centers
+      const totalCollection = schedules
+        .filter(s => managedCenterIds.includes(s.center_id))
+        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      
+      return {
+        ...staff,
+        totalCollection,
+        centerCount: managedCenterIds.length
+      };
+    }).filter(s => s.role !== 'Manager' || s.centerCount > 0); // Hide internal users/managers unless active
+
+    res.json(staffPerformance);
+  } catch (error) {
+    console.error('Staff Performance error:', error);
     res.status(500).json({ error: error.message });
   }
 });

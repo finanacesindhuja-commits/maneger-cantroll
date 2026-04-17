@@ -122,12 +122,32 @@ app.get('/api/stats', async (req, res) => {
     const pendingDisbursement = (pendingLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
 
     // 3. Pending Sanction: Member count (Waiting for Manager)
-    const { count: memberCount, error: memberError } = await supabase
+    const { data: pdData } = await supabase
+      .from('pd_verifications')
+      .select('member_id')
+      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+
+    let readyForPdLoansCount = 0;
+    let readyForPdCenterIds = [];
+
+    if (approvedMemberIds.length > 0) {
+      const { data: readyLoans } = await supabase
+        .from('loans')
+        .select('center_id')
+        .eq('status', 'READY FOR PD')
+        .in('member_id', approvedMemberIds);
+        
+      readyForPdLoansCount = readyLoans?.length || 0;
+      readyForPdCenterIds = readyLoans?.map(l => l.center_id) || [];
+    }
+
+    const { count: approvedMemberCount } = await supabase
       .from('loans')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'APPROVED');
 
-    if (memberError) throw memberError;
+    const memberCount = (approvedMemberCount || 0) + readyForPdLoansCount;
 
     // 4. Sidebar Counts (Center based)
     // Pending Sanction Centers
@@ -135,7 +155,7 @@ app.get('/api/stats', async (req, res) => {
       .from('loans')
       .select('center_id')
       .eq('status', 'APPROVED');
-    const pendingSanctionCenters = [...new Set(psLoans?.map(l => l.center_id).filter(Boolean))].length;
+    const pendingSanctionCenters = [...new Set([...(psLoans?.map(l => l.center_id) || []), ...readyForPdCenterIds].filter(Boolean))].length;
 
     // Pending Schedule Centers
     const { data: crLoans } = await supabase
@@ -183,13 +203,33 @@ app.get('/api/profile/:staffId', async (req, res) => {
 // Fetch centers with active loan activity
 app.get('/api/centers', async (req, res) => {
   try {
+    // Fetch ALL PD verifications that are truly approved
+    const { data: pdData } = await supabase
+      .from('pd_verifications')
+      .select('member_id')
+      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+
     // 1. Get unique center IDs and their statuses
-    const { data: activeLoans, error: loanError } = await supabase
+    // Fetch APPROVED, SANCTIONED, CREDITED loans
+    const { data: regularLoans, error: loanError } = await supabase
       .from('loans')
-      .select('center_id, status, amount_sanctioned')
+      .select('center_id, status, amount_sanctioned, member_id')
       .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED']);
 
     if (loanError) throw loanError;
+
+    let readyLoans = [];
+    if (approvedMemberIds.length > 0) {
+      const { data: rLoans } = await supabase
+        .from('loans')
+        .select('center_id, status, amount_sanctioned, member_id')
+        .eq('status', 'READY FOR PD')
+        .in('member_id', approvedMemberIds);
+      if (rLoans) readyLoans = rLoans;
+    }
+
+    const activeLoans = [...(regularLoans || []), ...readyLoans];
 
     if (!activeLoans || activeLoans.length === 0) {
       return res.json([]);
@@ -215,7 +255,7 @@ app.get('/api/centers', async (req, res) => {
       // A center is "Sanctioned" if it has loans waiting for credit
       const hasSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
       // A center is "Approved" if it has loans waiting for sanction
-      const hasApproved = centerLoans.some(l => l.status === 'APPROVED');
+      const hasApproved = centerLoans.some(l => l.status === 'APPROVED' || l.status === 'READY FOR PD');
 
       const totalAmount = centerLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
 
@@ -316,14 +356,32 @@ app.get('/api/centers/:id/sanctioned-amount', async (req, res) => {
 // 1. Fetch loans that are APPROVED (by PD) but NOT YET SANCTIONED (by Manager)
 app.get('/api/loans/sanction-queue', async (req, res) => {
   try {
-    const { data: loans, error } = await supabase
+    const { data: pdData } = await supabase
+      .from('pd_verifications')
+      .select('member_id')
+      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+
+    const { data: approvedLoans, error: fetchError } = await supabase
       .from('loans')
       .select('*, members(member_no)')
-      .eq('status', 'APPROVED'); // Matching actual database status
+      .eq('status', 'APPROVED');
+    
+    if (fetchError) throw fetchError;
 
-    if (error) throw error;
+    let readyLoans = [];
+    if (approvedMemberIds.length > 0) {
+      const { data: rLoans } = await supabase
+        .from('loans')
+        .select('*, members(member_no)')
+        .eq('status', 'READY FOR PD')
+        .in('member_id', approvedMemberIds);
+      if (rLoans) readyLoans = rLoans;
+    }
 
-    const formatted = (loans || []).map(l => ({
+    const loans = [...(approvedLoans || []), ...readyLoans];
+
+    const formatted = loans.map(l => ({
       ...l,
       member_no: l.members?.member_no || l.id
     }));
@@ -340,15 +398,35 @@ app.post('/api/centers/:id/sanction', async (req, res) => {
   const { id } = req.params;
   const { amountSanctioned, schemeName, staffId } = req.body;
   try {
-    // 1. Get all APPROVED loans for this center
-    const { data: approvedLoans, error: fetchError } = await supabase
+    const { data: pdData } = await supabase
+      .from('pd_verifications')
+      .select('member_id')
+      .eq('center_id', id)
+      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+
+    const { data: alreadyApprovedLoans, error: err1 } = await supabase
       .from('loans')
       .select('id')
       .eq('center_id', id)
       .eq('status', 'APPROVED');
+      
+    if (err1) throw err1;
 
-    if (fetchError) throw fetchError;
-    if (!approvedLoans || approvedLoans.length === 0) {
+    let readyLoans = [];
+    if (approvedMemberIds.length > 0) {
+      const { data: rLoans, error: err2 } = await supabase
+        .from('loans')
+        .select('id')
+        .eq('status', 'READY FOR PD')
+        .in('member_id', approvedMemberIds);
+      if (err2) throw err2;
+      readyLoans = rLoans || [];
+    }
+
+    const approvedLoans = [...(alreadyApprovedLoans || []), ...readyLoans];
+
+    if (approvedLoans.length === 0) {
       return res.status(404).json({ error: 'No PD-Approved loans found for this center' });
     }
 

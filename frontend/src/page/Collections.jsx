@@ -10,6 +10,8 @@ export default function Collections() {
   const navigate = useNavigate();
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('name');
+  const staffId = localStorage.getItem('staffId');
+  const branch = localStorage.getItem('branch');
 
   if (role !== 'Manager') {
     return (
@@ -61,8 +63,8 @@ export default function Collections() {
               <FaUserCircle className="text-white text-xl md:text-3xl" />
             </div>
             <div>
-              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">Manager Console</p>
-              <h1 className="text-md md:text-2xl font-black text-white tracking-tight truncate max-w-[150px] md:max-w-none">Daily Collections</h1>
+              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{staffId} • {branch || 'General'}</p>
+              <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Daily Collections</h1>
             </div>
           </div>
           <button onClick={() => window.location.reload()} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
@@ -116,6 +118,7 @@ export default function Collections() {
                   <thead className="hidden md:table-header-group">
                     <tr className="text-slate-500 text-[10px] uppercase font-black tracking-widest border-b border-white/5 bg-white/[0.01]">
                       <th className="px-8 py-5">Center Name</th>
+                      <th className="px-8 py-5">Branch</th>
                       <th className="px-8 py-5">Week Stat</th>
                       <th className="px-8 py-5">Target Amount</th>
                       <th className="px-8 py-5 text-right">Progress</th>
@@ -135,6 +138,10 @@ export default function Collections() {
                           <td className="px-4 md:px-8 py-4 md:py-6 font-black text-white block md:table-cell">
                             <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Center Name</span>
                             {s.center_name}
+                          </td>
+                          <td className="px-4 md:px-8 py-4 md:py-6 block md:table-cell">
+                            <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Branch</span>
+                            <span className="text-[10px] font-bold text-slate-400 border border-white/10 px-2 py-1 rounded-lg">{s.branch || 'N/A'}</span>
                           </td>
                           <td className="px-4 md:px-8 py-4 md:py-6 block md:table-cell">
                             <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Status</span>
@@ -159,53 +166,7 @@ export default function Collections() {
           </div>
         </div>
 
-        {/* Recent Activity Table (Schedules) */}
-        <div className="bg-slate-800/40 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-2xl mt-12">
-          <div className="px-8 py-6 border-b border-white/5 bg-white/[0.02] flex justify-between items-center">
-            <h2 className="text-sm font-black text-white uppercase tracking-tight">Recent Activity (Schedules)</h2>
-            <button onClick={fetchSchedules} className="text-[10px] text-indigo-400 font-black uppercase tracking-widest px-4 py-2 rounded-xl border border-indigo-500/20 hover:bg-indigo-600 hover:text-white transition-all text-xs">Refresh</button>
-          </div>
-          <div className="overflow-x-auto block">
-            <table className="w-full text-left border-collapse block md:table">
-              <thead className="hidden md:table-header-group">
-                <tr className="bg-white/[0.02] text-slate-500 text-[10px] uppercase font-black tracking-widest">
-                  <th className="px-8 py-6">Center</th>
-                  <th className="px-8 py-6">Scheduled Date</th>
-                  <th className="px-8 py-6">Amount</th>
-                  <th className="px-8 py-6">Status</th>
-                </tr>
-              </thead>
-              <tbody className="block md:table-row-group divide-y divide-white/5 text-sm">
-                {schedules.length === 0 ? (
-                  <tr className="block md:table-row">
-                    <td colSpan="4" className="px-8 py-10 text-center text-slate-500 font-bold block md:table-cell">No schedules active.</td>
-                  </tr>
-                ) : schedules.map((s) => (
-                  <tr key={s.id} className="hover:bg-white/[0.02] transition-colors block md:table-row p-4 md:p-0">
-                    <td className="px-5 md:px-8 py-3 md:py-6 font-black text-white block md:table-cell">
-                      <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Center</span>
-                      {s.center_name}
-                    </td>
-                    <td className="px-5 md:px-8 py-3 md:py-6 font-bold text-slate-400 block md:table-cell">
-                      <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Date</span>
-                      {s.scheduled_date} <span className="text-[10px] opacity-50">({s.scheduled_day})</span>
-                    </td>
-                    <td className="px-5 md:px-8 py-3 md:py-6 font-black text-white block md:table-cell">
-                      <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Amount</span>
-                      ₹{(s.amount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-5 md:px-8 py-3 md:py-6 block md:table-cell">
-                      <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Status</span>
-                      <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${s.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : s.status === 'Rejected' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
-                        {s.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
       </main>
     </div>
   );

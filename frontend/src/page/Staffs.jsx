@@ -13,6 +13,9 @@ export default function Staffs() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [staffPerformance, setStaffPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
+  const userName = localStorage.getItem('name');
+  const loggedInStaffId = localStorage.getItem('staffId'); // Using a different name to avoid conflict with 'staff' in map
+  const branch = localStorage.getItem('branch');
 
   if (role !== 'Manager') {
     return (
@@ -33,7 +36,13 @@ export default function Staffs() {
       setLoading(true);
       const res = await fetch(`${API_URL}/api/staff/performance`);
       const data = await res.json();
-      if (res.ok) setStaffPerformance(data);
+      if (res.ok) {
+        // Frontend Filter: Ensure only Relationship Officers are shown
+        const filteredData = (data || []).filter(s => 
+          s.role && s.role.trim().toLowerCase() === 'relationship officer'
+        );
+        setStaffPerformance(filteredData);
+      }
     } catch (err) {
       console.error('Staff fetch error:', err);
     } finally {
@@ -65,7 +74,7 @@ export default function Staffs() {
               <FaUsers className="text-white text-xl md:text-3xl" />
             </div>
             <div>
-              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">Manager Console</p>
+              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{loggedInStaffId} • {branch || 'General'}</p>
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Staff Management</h1>
             </div>
           </div>
@@ -91,14 +100,25 @@ export default function Staffs() {
                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-[60px] pointer-events-none group-hover:bg-indigo-500/10 transition-all"></div>
                 
                 <div className="flex items-start justify-between mb-6">
-                  <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-indigo-400 border border-white/5 group-hover:scale-110 transition-transform">
-                    <FaUserTie size={28} />
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden border border-white/10 group-hover:scale-105 transition-all shadow-lg flex-shrink-0 bg-slate-900 flex items-center justify-center">
+                    {staff.image_url ? (
+                      <img 
+                        src={staff.image_url} 
+                        alt={staff.name} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.onerror = null; e.target.src = ''; /* Fallback logic handled by parent if needed */ }}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-white/5 flex items-center justify-center text-indigo-400">
+                        <FaUserTie size={28} />
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] font-black text-indigo-500 bg-indigo-500/10 px-3 py-1 rounded-lg border border-indigo-500/20 uppercase tracking-widest">
                       {staff.role}
                     </span>
-                    <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-tighter">ID: {staff.staff_id}</p>
+                    <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-tighter">ID: {staff.staff_id} • {staff.branch || 'N/A'}</p>
                   </div>
                 </div>
 

@@ -1,4 +1,4 @@
-export const API_URL = (import.meta.env.VITE_API_URL || 'https://maneger-cantroll.onrender.com').replace(/\/$/, '');
+export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 export const APP_NAME = import.meta.env.VITE_APP_NAME || 'Manager Control';
 
 console.log('--- Configuration Loaded ---');

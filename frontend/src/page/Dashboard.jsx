@@ -10,6 +10,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('name');
+  const staffId = localStorage.getItem('staffId');
+  const branch = localStorage.getItem('branch');
 
   if (role !== 'Manager') {
     return (
@@ -86,7 +88,7 @@ export default function Dashboard() {
               <FaUserCircle className="text-white text-xl md:text-3xl" />
             </div>
             <div>
-              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">Manager Console</p>
+              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{staffId} • {branch || 'General'}</p>
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight truncate max-w-[150px] md:max-w-none">Hi, {userName || 'Manager'}</h1>
             </div>
           </div>
@@ -125,6 +127,7 @@ export default function Dashboard() {
               <thead className="hidden md:table-header-group">
                 <tr className="bg-white/[0.02] text-slate-500 text-[10px] uppercase font-black tracking-widest">
                   <th className="px-8 py-6">Center</th>
+                  <th className="px-8 py-6">Branch</th>
                   <th className="px-8 py-6">Scheme</th>
                   <th className="px-8 py-6">Total Amount</th>
                   <th className="px-8 py-6">Status</th>
@@ -134,7 +137,7 @@ export default function Dashboard() {
               <tbody className="block md:table-row-group divide-y divide-white/5 text-sm">
                 {sanctionTracker.length === 0 ? (
                   <tr className="block md:table-row">
-                    <td colSpan="5" className="px-8 py-10 text-center text-slate-500 font-bold block md:table-cell">No active sanctions found.</td>
+                    <td colSpan="6" className="px-8 py-10 text-center text-slate-500 font-bold block md:table-cell">No active sanctions found.</td>
                   </tr>
                 ) : sanctionTracker.map((item) => (
                   <tr key={item.centerId} className="group hover:bg-white/[0.02] transition-colors block md:table-row p-4 md:p-0">
@@ -142,6 +145,10 @@ export default function Dashboard() {
                       <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Center</span>
                       <div className="font-black text-white text-lg tracking-tight uppercase">{item.centerName}</div>
                       <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">ID: #{item.centerId}</div>
+                    </td>
+                    <td className="px-5 md:px-8 py-3 md:py-6 block md:table-cell">
+                      <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Branch</span>
+                      <span className="text-[10px] font-bold text-slate-400 border border-white/10 px-2 py-1 rounded-lg uppercase tracking-tighter">{item.branch || 'N/A'}</span>
                     </td>
                     <td className="px-5 md:px-8 py-3 md:py-6 block md:table-cell">
                       <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Scheme</span>

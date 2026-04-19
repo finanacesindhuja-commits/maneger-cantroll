@@ -35,6 +35,7 @@ export default function ManagerLogin() {
         localStorage.setItem('role', data.role);
         localStorage.setItem('staffId', data.staffId);
         localStorage.setItem('name', data.name);
+        localStorage.setItem('branch', data.branch || '');
         navigate('/dashboard');
       } else {
         setError(data.message || 'Invalid credentials or unauthorized role.');

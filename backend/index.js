@@ -85,7 +85,8 @@ app.post('/api/login', async (req, res) => {
       message: 'Login successful',
       role: user.role,
       staffId: user.staff_id,
-      name: user.name
+      name: user.name,
+      branch: user.branch
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -189,7 +190,7 @@ app.get('/api/profile/:staffId', async (req, res) => {
   try {
     const { data: user, error } = await supabase
       .from('staff')
-      .select('name, staff_id, role')
+      .select('name, staff_id, role, branch')
       .ilike('staff_id', req.params.staffId)
       .single();
 
@@ -246,26 +247,42 @@ app.get('/api/centers', async (req, res) => {
 
     if (centerError) throw centerError;
 
-    // 3. Attach stage info to centers for display and filtering
+    // 2b. Fetch staff info to map branches to centers
+    const { data: staffData } = await supabase
+      .from('staff')
+      .select('staff_id, branch');
+    
+    const branchMap = {};
+    if (staffData) {
+      staffData.forEach(s => {
+        if (s.staff_id) branchMap[s.staff_id] = s.branch;
+      });
+    }
+
+    // 3. Attach stage info, branch, and stats to centers
     const enrichedCenters = centers.map(c => {
       const centerLoans = activeLoans.filter(l => l.center_id === c.id);
       
-      // A center is "Credited" if it has ANY credited loan (for scheduling)
-      const hasCredited = centerLoans.some(l => l.status === 'CREDITED');
-      // A center is "Sanctioned" if it has loans waiting for credit
-      const hasSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
-      // A center is "Approved" if it has loans waiting for sanction
-      const hasApproved = centerLoans.some(l => l.status === 'APPROVED' || l.status === 'READY FOR PD');
+      // Stage logic
+      const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');
+      const isApproved = centerLoans.some(l => l.status === 'APPROVED');
+      const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
+      const isCredited = centerLoans.some(l => l.status === 'CREDITED');
+      
+      const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
 
+      // Statistics
       const totalAmount = centerLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
 
       return { 
         ...c, 
+        branch: branchMap[c.staff_id] || 'N/A',
         amount: totalAmount,
-        canSanction: hasApproved, // Strictly PD Approved
-        canSchedule: hasCredited,
-        isWaitingCredit: hasSanctioned && !hasCredited,
-        membersCount: centerLoans.length
+        canSanction: isApproved || isReadyForPd, 
+        canSchedule: isCredited,
+        isWaitingCredit: isSanctioned && !isCredited,
+        membersCount: centerLoans.length,
+        stage: stage
       };
     });
 
@@ -316,16 +333,27 @@ app.get('/api/loans/track-disbursement', async (req, res) => {
       return acc;
     }, {});
 
-    // Fetch center names
-    const { data: centerNames } = await supabase
+    // Fetch center mapping to get staff_id, then staff to get branch
+    const { data: centerDetails } = await supabase
       .from('centers')
-      .select('id, name')
+      .select('id, name, staff_id')
       .in('id', Object.keys(centerGroups));
 
-    const result = Object.values(centerGroups).map(g => ({
-      ...g,
-      centerName: centerNames?.find(cn => cn.id === g.centerId)?.name || 'Unknown'
-    }));
+    const { data: staffList } = await supabase
+      .from('staff')
+      .select('staff_id, branch');
+
+    const staffBranchMap = {};
+    if (staffList) staffList.forEach(s => staffBranchMap[s.staff_id] = s.branch);
+
+    const result = Object.values(centerGroups).map(g => {
+      const center = centerDetails?.find(cn => cn.id === g.centerId);
+      return {
+        ...g,
+        centerName: center?.name || 'Unknown',
+        branch: staffBranchMap[center?.staff_id] || 'N/A'
+      };
+    });
 
     res.json(result);
   } catch (error) {
@@ -498,7 +526,23 @@ app.get('/api/schedules', async (req, res) => {
       .order('scheduled_date', { ascending: false });
 
     if (error) throw error;
-    res.json(schedules);
+
+    // Fetch center mapping to get staff_id, then staff to get branch
+    const { data: centers } = await supabase.from('centers').select('id, staff_id');
+    const { data: staff } = await supabase.from('staff').select('staff_id, branch');
+
+    const centerToStaff = {};
+    if (centers) centers.forEach(c => centerToStaff[c.id] = c.staff_id);
+
+    const staffToBranch = {};
+    if (staff) staff.forEach(s => staffToBranch[s.staff_id] = s.branch);
+
+    const enriched = (schedules || []).map(s => ({
+      ...s,
+      branch: staffToBranch[centerToStaff[s.center_id]] || 'N/A'
+    }));
+
+    res.json(enriched);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -792,8 +836,22 @@ app.get('/api/staff/performance', async (req, res) => {
     // 1. Fetch all staff members
     const { data: staffList, error: staffError } = await supabase
       .from('staff')
-      .select('staff_id, name, role');
+      .select('staff_id, name, role, mobile, branch');
     if (staffError) throw staffError;
+
+    // 1b. Fetch all applicants to get their images
+    const { data: applicants, error: appError } = await supabase
+      .from('applicants')
+      .select('mobile, image_url')
+      .not('image_url', 'is', null);
+    
+    // Create a map for quick image lookup
+    const imageMap = {};
+    if (!appError && applicants) {
+      applicants.forEach(a => {
+        if (a.mobile) imageMap[a.mobile] = a.image_url;
+      });
+    }
 
     // 2. Fetch all centers and their assigned staff
     const { data: centers, error: centerError } = await supabase
@@ -808,23 +866,26 @@ app.get('/api/staff/performance', async (req, res) => {
     if (schError) throw schError;
 
     // 4. Aggregate performance data
-    const staffPerformance = staffList.map(staff => {
-      // Find IDs of centers managed by this specific staff member
-      const managedCenterIds = centers
-        .filter(c => c.staff_id === staff.staff_id)
-        .map(c => c.id);
-      
-      // Calculate total scheduled collection amount for those centers
-      const totalCollection = schedules
-        .filter(s => managedCenterIds.includes(s.center_id))
-        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-      
-      return {
-        ...staff,
-        totalCollection,
-        centerCount: managedCenterIds.length
-      };
-    }).filter(s => s.role !== 'Manager' || s.centerCount > 0); // Hide internal users/managers unless active
+    const staffPerformance = staffList
+      .filter(s => s.role && s.role.trim().toLowerCase() === 'relationship officer') // ROBUST FILTER: Only Relationship Officers
+      .map(staff => {
+        // Find IDs of centers managed by this specific staff member
+        const managedCenterIds = centers
+          .filter(c => c.staff_id === staff.staff_id)
+          .map(c => c.id);
+        
+        // Calculate total scheduled collection amount for those centers
+        const totalCollection = schedules
+          .filter(s => managedCenterIds.includes(s.center_id))
+          .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        
+        return {
+          ...staff,
+          totalCollection,
+          centerCount: managedCenterIds.length,
+          image_url: imageMap[staff.mobile] || null // Attach image if found in applicants
+        };
+      });
 
     res.json(staffPerformance);
   } catch (error) {

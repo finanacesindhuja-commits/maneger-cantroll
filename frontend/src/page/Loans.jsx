@@ -12,6 +12,7 @@ export default function Loans() {
   const staffId = localStorage.getItem('staffId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('name');
+  const branch = localStorage.getItem('branch');
 
   if (role !== 'Manager') {
     return (
@@ -151,8 +152,8 @@ export default function Loans() {
               <FaUserCircle className="text-white text-xl md:text-3xl" />
             </div>
             <div>
-              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">Loan Approvals</p>
-              <h1 className="text-md md:text-2xl font-black text-white tracking-tight truncate max-w-[150px] md:max-w-none">Sanction & Schedule</h1>
+              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{staffId} • {branch || 'General'}</p>
+              <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Loan Management</h1>
             </div>
           </div>
           <button onClick={() => window.location.reload()} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
@@ -177,7 +178,7 @@ export default function Loans() {
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Select Center</label>
                 <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none">
                   <option value="">Select Center...</option>
-                  {centers.filter(c => c.canSanction).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {centers.filter(c => c.canSanction).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch})</option>)}
                 </select>
                 {centers.filter(c => c.canSanction).length === 0 && (
                   <p className="text-[10px] text-amber-500/50 font-bold mt-2 text-center animate-pulse">Wait for PD Approval updates...</p>
@@ -225,8 +226,8 @@ export default function Loans() {
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Sanctioned Center</label>
                 <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none">
                   <option value="">Select Center...</option>
-                  {centers.filter(c => c.canSchedule && !schedules.some(s => s.center_id === Number(c.id))).map(c => <option key={c.id} value={c.id}>{c.name} (₹{c.amount.toLocaleString()})</option>)}
-                  {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} (Waiting for Credit...)</option>)}
+                  {centers.filter(c => c.canSchedule && !schedules.some(s => s.center_id === Number(c.id))).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount.toLocaleString()}</option>)}
+                  {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} ({c.branch}) - [Waiting Credit]</option>)}
                 </select>
                 {centers.filter(c => c.canSchedule && !schedules.some(s => s.center_id === Number(c.id))).length === 0 && (
                   <p className="text-[10px] text-indigo-500/50 font-bold mt-2 text-center animate-pulse">Waiting for Disbursement Credit...</p>

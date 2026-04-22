@@ -17,8 +17,8 @@ async function checkStaff() {
   console.table(data.map(s => ({ 
     staff_id: s.staff_id, 
     role: s.role, 
-    password: s.password ? '****' : '(Empty)',
-    name: s.name 
+    name: s.name,
+    branch: s.branch
   })));
 }
 

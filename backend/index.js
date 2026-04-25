@@ -138,7 +138,7 @@ app.get('/api/stats', async (req, res) => {
         .select('center_id')
         .eq('status', 'READY FOR PD')
         .in('member_id', approvedMemberIds);
-        
+
       readyForPdLoansCount = readyLoans?.length || 0;
       readyForPdCenterIds = readyLoans?.map(l => l.center_id) || [];
     }
@@ -163,12 +163,12 @@ app.get('/api/stats', async (req, res) => {
       .from('loans')
       .select('center_id')
       .eq('status', 'CREDITED');
-    
+
     const { data: schData } = await supabase
       .from('collection_schedules')
       .select('center_id');
     const scheduledCenterIds = new Set(schData?.map(s => s.center_id).filter(Boolean));
-    
+
     const pendingScheduleCenters = [...new Set(crLoans?.map(l => l.center_id).filter(Boolean))]
       .filter(id => !scheduledCenterIds.has(id)).length;
 
@@ -251,7 +251,7 @@ app.get('/api/centers', async (req, res) => {
     const { data: staffData } = await supabase
       .from('staff')
       .select('staff_id, branch');
-    
+
     const branchMap = {};
     if (staffData) {
       staffData.forEach(s => {
@@ -262,23 +262,23 @@ app.get('/api/centers', async (req, res) => {
     // 3. Attach stage info, branch, and stats to centers
     const enrichedCenters = centers.map(c => {
       const centerLoans = activeLoans.filter(l => l.center_id === c.id);
-      
+
       // Stage logic
       const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');
       const isApproved = centerLoans.some(l => l.status === 'APPROVED');
       const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
       const isCredited = centerLoans.some(l => l.status === 'CREDITED');
-      
+
       const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
 
       // Statistics
       const totalAmount = centerLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
 
-      return { 
-        ...c, 
+      return {
+        ...c,
         branch: branchMap[c.staff_id] || 'N/A',
         amount: totalAmount,
-        canSanction: isApproved || isReadyForPd, 
+        canSanction: isApproved || isReadyForPd,
         canSchedule: isCredited,
         isWaitingCredit: isSanctioned && !isCredited,
         membersCount: centerLoans.length,
@@ -307,18 +307,18 @@ app.get('/api/loans/track-disbursement', async (req, res) => {
     const centerGroups = data.reduce((acc, l) => {
       const cid = l.center_id;
       if (!acc[cid]) {
-        acc[cid] = { 
-          centerId: cid, 
-          totalAmount: 0, 
-          status: 'Stored', 
-          members: 0, 
+        acc[cid] = {
+          centerId: cid,
+          totalAmount: 0,
+          status: 'Stored',
+          members: 0,
           scheme: l.scheme_name,
-          dbStatus: l.disbursement_app_status 
+          dbStatus: l.disbursement_app_status
         };
       }
       acc[cid].totalAmount += (Number(l.amount_sanctioned) || 0);
       acc[cid].members += 1;
-      
+
       // Determine display status based on database columns
       if (l.status === 'DISBURSED') {
         acc[cid].status = 'Active & Scheduled';
@@ -329,7 +329,7 @@ app.get('/api/loans/track-disbursement', async (req, res) => {
       } else {
         acc[cid].status = 'Stored';
       }
-      
+
       return acc;
     }, {});
 
@@ -394,7 +394,7 @@ app.get('/api/loans/sanction-queue', async (req, res) => {
       .from('loans')
       .select('*, members(member_no)')
       .eq('status', 'APPROVED');
-    
+
     if (fetchError) throw fetchError;
 
     let readyLoans = [];
@@ -438,7 +438,7 @@ app.post('/api/centers/:id/sanction', async (req, res) => {
       .select('id')
       .eq('center_id', id)
       .eq('status', 'APPROVED');
-      
+
     if (err1) throw err1;
 
     let readyLoans = [];
@@ -552,7 +552,7 @@ app.get('/api/schedules', async (req, res) => {
 app.post('/api/schedules', async (req, res) => {
   const { centerId, centerName, scheduledDate, amount } = req.body;
   const amtStr = String(amount);
-  
+
   // Define Loan Plans
   const loanPlans = {
     "10000": {
@@ -564,10 +564,10 @@ app.post('/api/schedules', async (req, res) => {
       name: "₹12,000 (16-Week Plan)",
       weeks: 16,
       amounts: [
-        990, 990, 990, 990, 
-        980, 980, 980, 980, 
-        970, 970, 970, 970, 
-        960, 960, 960, 960
+        1050, 1050, 1050, 1050,
+        1020, 1020, 1020, 1020,
+        980, 980, 980, 980,
+        950, 950, 950, 950
       ]
     }
   };
@@ -581,7 +581,7 @@ app.post('/api/schedules', async (req, res) => {
       .eq('status', 'CREDITED');
 
     if (loanFetchError) throw loanFetchError;
-    
+
     // 2. Update their status to DISBURSED
     if (loansToActivate && loansToActivate.length > 0) {
       const loanIds = loansToActivate.map(l => l.id);
@@ -589,7 +589,7 @@ app.post('/api/schedules', async (req, res) => {
         .from('loans')
         .update({ status: 'DISBURSED' })
         .in('id', loanIds);
-      
+
       if (activeError) console.error('Activation error during scheduling:', activeError);
     }
 
@@ -597,74 +597,85 @@ app.post('/api/schedules', async (req, res) => {
     const centerDate = new Date(scheduledDate);
     const weekdaysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const centerMeetingDay = weekdaysArr[centerDate.getDay()];
-    
+
     await supabase
       .from('centers')
       .update({ meeting_day: centerMeetingDay })
       .eq('id', Number(centerId));
 
     // 4. Generate Weekly Collections PER MEMBER as 'Approved'
-    const isPlan = loanPlans[amount]; // Templates based on starting level
-    const template = loanPlans["10000"]; // Use 10k as the base multiplier template
-    const iterations = isPlan ? isPlan.weeks : 12; // Default to 12 weeks if no specific plan found
-    
     const results = [];
     const errors = [];
 
     // Loop through each member
     for (const loan of (loansToActivate || [])) {
-      // Calculate multiplier based on this member's specific sanctioned amount
-      const multiplier = (Number(loan.amount_sanctioned) || 10000) / 10000;
+      const memberAmount = Number(loan.amount_sanctioned) || 10000;
+      
+      let memberPlan;
+      let multiplier = 1;
+      let iterations = 12;
+      
+      if (loanPlans[String(memberAmount)]) {
+        // If there's an exact plan match (e.g. 10000, 12000), use its exact amounts
+        memberPlan = loanPlans[String(memberAmount)];
+        iterations = memberPlan.weeks;
+        multiplier = 1; // Exact match, no scaling needed
+      } else {
+        // Fallback to 10k plan scaled up
+        memberPlan = loanPlans["10000"];
+        iterations = 12;
+        multiplier = memberAmount / 10000;
+      }
 
       // Generate all weeks for this specific member
       for (let i = 0; i < iterations; i++) {
-         const baseDate = new Date(scheduledDate);
-         baseDate.setDate(baseDate.getDate() + (i * 7));
-         
-         let dayIndex = baseDate.getDay();
-         if (dayIndex === 0) {
-           baseDate.setDate(baseDate.getDate() + 1);
-           dayIndex = baseDate.getDay();
-         }
+        const baseDate = new Date(scheduledDate);
+        baseDate.setDate(baseDate.getDate() + (i * 7));
 
-         const year = baseDate.getFullYear();
-         const month = String(baseDate.getMonth() + 1).padStart(2, '0');
-         const day = String(baseDate.getDate()).padStart(2, '0');
-         const finalSchDate = `${year}-${month}-${day}`;
-         const scheduledDayName = weekdaysArr[dayIndex];
-         
-         // Calculate member-specific installment for this week
-         const currentAmount = template.amounts[i] * multiplier;
+        let dayIndex = baseDate.getDay();
+        if (dayIndex === 0) {
+          baseDate.setDate(baseDate.getDate() + 1);
+          dayIndex = baseDate.getDay();
+        }
 
-         const { data: schedule, error } = await supabase
-           .from('collection_schedules')
-           .insert([{
-             center_id: Number(centerId),
-             center_name: centerName,
-             member_id: loan.id,
-             member_name: loan.member_name,
-             week_number: i + 1,
-             scheduled_date: finalSchDate,
-             scheduled_day: scheduledDayName,
-             amount: currentAmount,
-             status: 'Approved' 
-           }])
-           .select()
-           .single();
+        const year = baseDate.getFullYear();
+        const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+        const day = String(baseDate.getDate()).padStart(2, '0');
+        const finalSchDate = `${year}-${month}-${day}`;
+        const scheduledDayName = weekdaysArr[dayIndex];
 
-         if (error) {
-           console.error('Insert error:', error);
-           errors.push(error.message);
-         } else {
-           results.push(schedule);
-         }
+        // Calculate member-specific installment for this week
+        const currentAmount = memberPlan.amounts[i] * multiplier;
+
+        const { data: schedule, error } = await supabase
+          .from('collection_schedules')
+          .insert([{
+            center_id: Number(centerId),
+            center_name: centerName,
+            member_id: loan.id,
+            member_name: loan.member_name,
+            week_number: i + 1,
+            scheduled_date: finalSchDate,
+            scheduled_day: scheduledDayName,
+            amount: currentAmount,
+            status: 'Approved'
+          }])
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Insert error:', error);
+          errors.push(error.message);
+        } else {
+          results.push(schedule);
+        }
       }
     }
 
-    res.json({ 
-       message: `Center Activated! Generated ${results.length} member-level schedules for ${centerMeetingDay}s.`,
-       count: results.length,
-       errors: errors.length > 0 ? errors : null
+    res.json({
+      message: `Center Activated! Generated ${results.length} member-level schedules for ${centerMeetingDay}s.`,
+      count: results.length,
+      errors: errors.length > 0 ? errors : null
     });
 
   } catch (error) {
@@ -691,7 +702,7 @@ app.get('/api/schedules', async (req, res) => {
 // Approve a collection schedule (Supports Bulk Approval via plan_id)
 app.put('/api/schedules/:id/approve', async (req, res) => {
   const { id } = req.params;
-  const { staffId } = req.body; 
+  const { staffId } = req.body;
   try {
     const { data, error } = await supabase
       .from('collection_schedules')
@@ -731,6 +742,27 @@ app.put('/api/schedules/:id/reject', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Mark a collection schedule as received by Manager
+app.put('/api/schedules/:id/receive', async (req, res) => {
+  const { id } = req.params;
+  const { staffId } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('collection_schedules')
+      .update({
+        status: 'Received'
+      })
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Fetch members for a specific schedule's center (PD APPROVED ONLY)
 app.get('/api/schedules/:id/members', async (req, res) => {
@@ -844,7 +876,7 @@ app.get('/api/staff/performance', async (req, res) => {
       .from('applicants')
       .select('mobile, image_url')
       .not('image_url', 'is', null);
-    
+
     // Create a map for quick image lookup
     const imageMap = {};
     if (!appError && applicants) {
@@ -873,12 +905,12 @@ app.get('/api/staff/performance', async (req, res) => {
         const managedCenterIds = centers
           .filter(c => c.staff_id === staff.staff_id)
           .map(c => c.id);
-        
+
         // Calculate total scheduled collection amount for those centers
         const totalCollection = schedules
           .filter(s => managedCenterIds.includes(s.center_id))
           .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-        
+
         return {
           ...staff,
           totalCollection,

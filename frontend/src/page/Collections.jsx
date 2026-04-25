@@ -39,6 +39,21 @@ export default function Collections() {
     } catch (err) { console.error('Schedules error:', err); }
   };
 
+  const handleAccept = async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/schedules/${id}/receive`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId })
+      });
+      if (res.ok) {
+        fetchSchedules();
+      }
+    } catch (err) {
+      console.error('Accept error:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0f1c] flex font-sans selection:bg-indigo-500/30">
       {isSidebarOpen && (
@@ -152,9 +167,18 @@ export default function Collections() {
                             ₹{(s.amount || 0).toLocaleString()}
                           </td>
                           <td className="px-4 md:px-8 py-4 md:py-6 text-left md:text-right block md:table-cell border-t border-white/5 md:border-t-0">
-                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5 hover:scale-105 transition-all w-full md:w-auto justify-center md:justify-end">
-                              <FaCheckCircle size={12} /> Ready for RO
-                            </div>
+                            {s.status === 'Received' ? (
+                              <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 text-indigo-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/20 shadow-lg shadow-indigo-500/5 hover:scale-105 transition-all w-full md:w-auto justify-center md:justify-end">
+                                <FaCheckCircle size={12} /> Received
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => handleAccept(s.id)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:scale-105 transition-all w-full md:w-auto justify-center md:justify-end"
+                              >
+                                <FaCheckCircle size={12} /> Accept
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))

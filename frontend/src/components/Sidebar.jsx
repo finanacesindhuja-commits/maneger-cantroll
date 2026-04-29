@@ -18,22 +18,22 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
         const data = await res.json();
         if (res.ok) {
           setCounts({
-            loans: data.pendingSanctionCount || 0,
-            collections: data.pendingScheduleCount || 0
+            loans: (data.pendingSanctionCount || 0) + (data.pendingScheduleCount || 0),
+            collections: data.pendingCollectionCount || 0
           });
         }
       } catch (err) { console.error('Counts fetch error:', err); }
     };
 
     fetchCounts();
-    const interval = setInterval(fetchCounts, 30000); // Refresh every 30s
+    const interval = setInterval(fetchCounts, 15000); // Refresh every 15s for better responsiveness
     return () => clearInterval(interval);
   }, []);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine />, path: '/dashboard' },
-    { id: 'loans', label: 'Loans', icon: <FaFileInvoiceDollar />, path: '/loans' },
-    { id: 'collections', label: 'Collections', icon: <FaCalendarAlt />, path: '/collections' },
+    { id: 'loans', label: 'Loans', icon: <FaFileInvoiceDollar />, path: '/loans', badge: 'loans', badgeColor: 'bg-amber-500' },
+    { id: 'collections', label: 'Collections', icon: <FaCalendarAlt />, path: '/collections', badge: 'collections', badgeColor: 'bg-emerald-500' },
     { id: 'staffs', label: 'Staffs', icon: <FaUsers />, path: '/staffs' },
   ];
 
@@ -64,21 +64,21 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
                 navigate(item.path);
                 setIsSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl text-sm font-bold transition-all ${location.pathname === item.path ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+              className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl text-sm font-bold transition-all relative group ${location.pathname === item.path ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
             >
               <div className="flex items-center gap-3">
                 {item.icon} {item.label}
               </div>
               
-              {item.id === 'loans' && counts.loans > 0 && (
-                <span className="ml-auto bg-amber-500 text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-lg shadow-amber-500/20">
-                  {counts.loans}
+              {item.badge && counts[item.badge] > 0 && (
+                <span className={`ml-auto ${item.badgeColor} text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-lg ring-4 ring-white/5`}>
+                  {counts[item.badge]}
                 </span>
               )}
-              {item.id === 'collections' && counts.collections > 0 && (
-                <span className="ml-auto bg-indigo-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-lg shadow-indigo-500/20">
-                  {counts.collections}
-                </span>
+
+              {/* Active Indicator Dot */}
+              {location.pathname === item.path && (
+                <div className="absolute left-0 w-1 h-6 bg-white rounded-r-full"></div>
               )}
             </button>
           ))}

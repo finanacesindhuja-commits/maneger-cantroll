@@ -172,12 +172,21 @@ app.get('/api/stats', async (req, res) => {
     const pendingScheduleCenters = [...new Set(crLoans?.map(l => l.center_id).filter(Boolean))]
       .filter(id => !scheduledCenterIds.has(id)).length;
 
+    // 5. Pending Collection Approvals (For today)
+    const today = new Date().toISOString().split('T')[0];
+    const { count: pendingCollectionCount } = await supabase
+      .from('collection_schedules')
+      .select('*', { count: 'exact', head: true })
+      .eq('scheduled_date', today)
+      .neq('status', 'Received');
+
     res.json({
       totalDisbursed: totalCredited,
       pendingDisbursement: pendingDisbursement,
       totalApprovedMembers: memberCount || 0,
       pendingSanctionCount: pendingSanctionCenters,
-      pendingScheduleCount: pendingScheduleCenters
+      pendingScheduleCount: pendingScheduleCenters,
+      pendingCollectionCount: pendingCollectionCount || 0
     });
   } catch (error) {
     console.error('Stats error:', error);
@@ -279,15 +288,21 @@ app.get('/api/centers', async (req, res) => {
       const isApproved = centerLoans.some(l => l.status === 'APPROVED');
       const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
       
-      // Strict Check: ALL members must be CREDITED or DISBURSED AND not stuck in 'STORED' state
-      const isCredited = centerLoans.length > 0 && centerLoans.every(l => 
-        ['CREDITED', 'DISBURSED'].includes(l.status) && l.disbursement_app_status !== 'STORED'
+      // Strict Check: ALL members must be CREDITED or DISBURSED, and at least one must be CREDITED (not yet scheduled)
+      const hasCredited = centerLoans.some(l => l.status === 'CREDITED');
+      const allProcessed = centerLoans.length > 0 && centerLoans.every(l => 
+        ['CREDITED', 'DISBURSED'].includes(l.status)
       );
+      const isCredited = allProcessed && hasCredited;
 
       const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
 
-      // Statistics
-      const totalAmount = centerLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
+      // Statistics: Only sum loans that are part of the current stage
+      // If we are ready to schedule, only sum the CREDITED loans
+      const relevantLoans = isCredited 
+        ? centerLoans.filter(l => l.status === 'CREDITED')
+        : centerLoans;
+      const totalAmount = relevantLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
 
       return {
         ...c,

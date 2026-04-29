@@ -181,7 +181,14 @@ export default function Loans() {
                   {centers.filter(c => c.canSanction).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch})</option>)}
                 </select>
                 {centers.filter(c => c.canSanction).length === 0 && (
-                  <p className="text-[10px] text-amber-500/50 font-bold mt-2 text-center animate-pulse">Wait for PD Approval updates...</p>
+                  <div className="mt-2 text-center">
+                    <p className="text-[10px] text-amber-500/50 font-bold animate-pulse uppercase tracking-widest">Wait for PD Approval updates...</p>
+                    {centers.filter(c => c.stage === 'PD').length > 0 && (
+                      <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest mt-1 italic">
+                        ({centers.filter(c => c.stage === 'PD').length} Centers currently in PD Verification)
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="space-y-2">
@@ -226,11 +233,18 @@ export default function Loans() {
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Sanctioned Center</label>
                 <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none">
                   <option value="">Select Center...</option>
-                  {centers.filter(c => c.canSchedule && !schedules.some(s => s.center_id === Number(c.id))).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount.toLocaleString()}</option>)}
+                  {centers.filter(c => c.canSchedule).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount.toLocaleString()}</option>)}
                   {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} ({c.branch}) - [Waiting Credit]</option>)}
                 </select>
-                {centers.filter(c => c.canSchedule && !schedules.some(s => s.center_id === Number(c.id))).length === 0 && (
-                  <p className="text-[10px] text-indigo-500/50 font-bold mt-2 text-center animate-pulse">Waiting for Disbursement Credit...</p>
+                {centers.filter(c => c.canSchedule).length === 0 && (
+                  <div className="mt-2 text-center">
+                    <p className="text-[10px] text-indigo-500/50 font-bold animate-pulse uppercase tracking-widest">Waiting for Disbursement Credit...</p>
+                    {centers.filter(c => c.isWaitingCredit).length > 0 && (
+                      <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest mt-1 italic">
+                        ({centers.filter(c => c.isWaitingCredit).length} Centers currently in Disbursement)
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="space-y-2">

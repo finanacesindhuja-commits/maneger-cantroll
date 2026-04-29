@@ -212,11 +212,11 @@ app.get('/api/centers', async (req, res) => {
     const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
 
     // 1. Get unique center IDs and their statuses
-    // Fetch APPROVED, SANCTIONED, CREDITED loans
+    // Fetch APPROVED, SANCTIONED, CREDITED, and DISBURSED loans
     const { data: regularLoans, error: loanError } = await supabase
       .from('loans')
-      .select('center_id, status, amount_sanctioned, member_id')
-      .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED']);
+      .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
+      .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED', 'DISBURSED']);
 
     if (loanError) throw loanError;
 
@@ -224,7 +224,7 @@ app.get('/api/centers', async (req, res) => {
     if (approvedMemberIds.length > 0) {
       const { data: rLoans } = await supabase
         .from('loans')
-        .select('center_id, status, amount_sanctioned, member_id')
+        .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
         .eq('status', 'READY FOR PD')
         .in('member_id', approvedMemberIds);
       if (rLoans) readyLoans = rLoans;
@@ -245,8 +245,6 @@ app.get('/api/centers', async (req, res) => {
       .in('id', readyCenterIds)
       .order('name', { ascending: true });
 
-    if (centerError) throw centerError;
-
     // 2b. Fetch staff info to map branches to centers
     const { data: staffData } = await supabase
       .from('staff')
@@ -259,15 +257,32 @@ app.get('/api/centers', async (req, res) => {
       });
     }
 
+    // 2c. Fetch all members to check group-level completion
+    const { data: allMembers } = await supabase
+      .from('members')
+      .select('id, center_id');
+
     // 3. Attach stage info, branch, and stats to centers
     const enrichedCenters = centers.map(c => {
       const centerLoans = activeLoans.filter(l => l.center_id === c.id);
+      const centerMembers = (allMembers || []).filter(m => String(m.center_id) === String(c.id));
+      
+      // Group completion check: Are all members in this center PD approved?
+      // Normalize both IDs to strings for comparison
+      const approvedMembersInCenter = centerMembers.filter(m => 
+        approvedMemberIds.some(aid => String(aid) === String(m.id))
+      );
+      const isPDComplete = centerMembers.length > 0 && approvedMembersInCenter.length === centerMembers.length;
 
       // Stage logic
       const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');
       const isApproved = centerLoans.some(l => l.status === 'APPROVED');
       const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
-      const isCredited = centerLoans.some(l => l.status === 'CREDITED');
+      
+      // Strict Check: ALL members must be CREDITED or DISBURSED AND not stuck in 'STORED' state
+      const isCredited = centerLoans.length > 0 && centerLoans.every(l => 
+        ['CREDITED', 'DISBURSED'].includes(l.status) && l.disbursement_app_status !== 'STORED'
+      );
 
       const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
 
@@ -278,10 +293,13 @@ app.get('/api/centers', async (req, res) => {
         ...c,
         branch: branchMap[c.staff_id] || 'N/A',
         amount: totalAmount,
-        canSanction: isApproved || isReadyForPd,
+        canSanction: isPDComplete && (isApproved || isReadyForPd),
         canSchedule: isCredited,
         isWaitingCredit: isSanctioned && !isCredited,
         membersCount: centerLoans.length,
+        totalMembersInGroup: centerMembers.length,
+        approvedMembersCount: approvedMembersInCenter.length,
+        isPDComplete,
         stage: stage
       };
     });
@@ -517,33 +535,66 @@ app.put('/api/centers/:id', async (req, res) => {
   }
 });
 
-// Fetch all collection schedules
+// Fetch all collection schedules (Consolidated & Enriched)
 app.get('/api/schedules', async (req, res) => {
   try {
-    const { data: schedules, error } = await supabase
+    const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
       .select('*')
       .order('scheduled_date', { ascending: false });
 
-    if (error) throw error;
+    if (schError) throw schError;
 
-    // Fetch center mapping to get staff_id, then staff to get branch
-    const { data: centers } = await supabase.from('centers').select('id, staff_id');
-    const { data: staff } = await supabase.from('staff').select('staff_id, branch');
+    // Fetch all needed mapping data in parallel
+    const [centersRes, staffRes] = await Promise.all([
+      supabase.from('centers').select('id, staff_id'),
+      supabase.from('staff').select('staff_id, branch, name')
+    ]);
 
-    const centerToStaff = {};
-    if (centers) centers.forEach(c => centerToStaff[c.id] = c.staff_id);
+    if (centersRes.error) console.error('Centers mapping error:', centersRes.error);
+    if (staffRes.error) console.error('Staff mapping error:', staffRes.error);
 
-    const staffToBranch = {};
-    if (staff) staff.forEach(s => staffToBranch[s.staff_id] = s.branch);
+    const centers = centersRes.data || [];
+    const staffList = staffRes.data || [];
 
-    const enriched = (schedules || []).map(s => ({
-      ...s,
-      branch: staffToBranch[centerToStaff[s.center_id]] || 'N/A'
-    }));
+    // Create lookup maps with extreme normalization
+    const centerToStaffMap = {};
+    centers.forEach(c => {
+      if (c.id) {
+        const cidKey = String(c.id).trim().toLowerCase();
+        centerToStaffMap[cidKey] = c.staff_id;
+      }
+    });
+
+    const staffInfoMap = {};
+    staffList.forEach(st => {
+      if (st.staff_id) {
+        const sidKey = String(st.staff_id).trim().toLowerCase();
+        staffInfoMap[sidKey] = {
+          branch: st.branch,
+          name: st.name
+        };
+      }
+    });
+
+    // Enrich schedules with staff details
+    const enriched = (schedules || []).map(s => {
+      const cidKey = s.center_id ? String(s.center_id).trim().toLowerCase() : null;
+      const staffId = cidKey ? centerToStaffMap[cidKey] : null;
+      const sidKey = staffId ? String(staffId).trim().toLowerCase() : null;
+      const info = sidKey ? staffInfoMap[sidKey] : null;
+      
+      return {
+        ...s,
+        staff_id: staffId ? String(staffId).trim() : 'N/A',
+        staff_name: info?.name || 'Unknown',
+        branch: info?.branch || 'N/A'
+      };
+    });
 
     res.json(enriched);
   } catch (error) {
+    console.error('Schedule enrichment critical error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -684,20 +735,6 @@ app.post('/api/schedules', async (req, res) => {
   }
 });
 
-// Fetch all collection schedules (used for daily monitoring)
-app.get('/api/schedules', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('collection_schedules')
-      .select('*')
-      .order('scheduled_date', { ascending: true });
-
-    if (error) throw error;
-    res.json(data || []);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Approve a collection schedule (Supports Bulk Approval via plan_id)
 app.put('/api/schedules/:id/approve', async (req, res) => {
@@ -743,22 +780,54 @@ app.put('/api/schedules/:id/reject', async (req, res) => {
   }
 });
 
-// Mark a collection schedule as received by Manager
-app.put('/api/schedules/:id/receive', async (req, res) => {
-  const { id } = req.params;
-  const { staffId } = req.body;
+// Mark all schedules for a center on a specific date as received
+app.put('/api/schedules/receive-bulk', async (req, res) => {
+  const { centerId, scheduledDate, staffId } = req.body;
   try {
     const { data, error } = await supabase
       .from('collection_schedules')
       .update({
-        status: 'Received'
+        status: 'Received',
+        received_by: staffId,
+        received_at: new Date().toISOString()
       })
-      .eq('id', id)
+      .eq('center_id', centerId)
+      .eq('scheduled_date', scheduledDate)
+      .neq('status', 'Received')
       .select();
 
     if (error) throw error;
-    res.json(data);
+    res.json({ message: `Successfully received ${data.length} schedules`, count: data.length });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk receive for all centers under a staff for a specific date
+app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
+  const { staffId, scheduledDate, managerId } = req.body;
+  
+  if (!staffId || !scheduledDate) {
+    return res.status(400).json({ error: 'Missing staffId or scheduledDate' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('collection_schedules')
+      .update({
+        status: 'Received',
+        received_by: managerId || 'Manager',
+        received_at: new Date().toISOString()
+      })
+      .eq('staff_id', staffId)
+      .eq('scheduled_date', scheduledDate)
+      .neq('status', 'Received')
+      .select();
+
+    if (error) throw error;
+    res.json({ message: `Staff collections received: ${data.length}`, count: data.length });
+  } catch (error) {
+    console.error('Staff bulk receive error:', error);
     res.status(500).json({ error: error.message });
   }
 });

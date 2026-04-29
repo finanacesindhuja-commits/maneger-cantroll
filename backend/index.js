@@ -788,8 +788,8 @@ app.put('/api/schedules/receive-bulk', async (req, res) => {
       .from('collection_schedules')
       .update({
         status: 'Received',
-        received_by: staffId,
-        received_at: new Date().toISOString()
+        approved_by: staffId,
+        approved_at: new Date().toISOString()
       })
       .eq('center_id', centerId)
       .eq('scheduled_date', scheduledDate)
@@ -812,14 +812,27 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
   }
 
   try {
+    // 1. Find centers belonging to this staff
+    const { data: centers } = await supabase
+      .from('centers')
+      .select('id')
+      .eq('staff_id', staffId);
+
+    if (!centers || centers.length === 0) {
+      return res.json({ message: 'No centers found for this staff', count: 0 });
+    }
+
+    const centerIds = centers.map(c => c.id);
+
+    // 2. Update schedules for those centers
     const { data, error } = await supabase
       .from('collection_schedules')
       .update({
         status: 'Received',
-        received_by: managerId || 'Manager',
-        received_at: new Date().toISOString()
+        approved_by: managerId || 'Manager',
+        approved_at: new Date().toISOString()
       })
-      .eq('staff_id', staffId)
+      .in('center_id', centerIds)
       .eq('scheduled_date', scheduledDate)
       .neq('status', 'Received')
       .select();

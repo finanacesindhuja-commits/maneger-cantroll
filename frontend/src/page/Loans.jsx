@@ -123,6 +123,7 @@ export default function Loans() {
         setSelectedCenter('');
         setSelectedDate('');
         fetchSchedules();
+        fetchCenters();
       }
     } catch (err) { console.error('Schedule error:', err); }
     finally { setActionLoading(false); }

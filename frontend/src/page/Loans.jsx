@@ -123,7 +123,6 @@ export default function Loans() {
         setSelectedCenter('');
         setSelectedDate('');
         fetchSchedules();
-        fetchCenters();
       }
     } catch (err) { console.error('Schedule error:', err); }
     finally { setActionLoading(false); }
@@ -162,11 +161,7 @@ export default function Loans() {
           </button>
         </header>
 
-        <div className={`grid grid-cols-1 ${
-          centers.filter(c => c.canSanction).length > 0 && centers.filter(c => c.canSchedule).length > 0 
-            ? 'lg:grid-cols-2' 
-            : ''
-        } gap-8 items-start`}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           {/* Slot 1: Amount Approval */}
           <div className="bg-slate-800/40 backdrop-blur border border-white/5 rounded-3xl p-8 shadow-xl min-h-[480px]">
             <div className="flex items-center gap-4 mb-8">
@@ -223,50 +218,58 @@ export default function Loans() {
           </div>
 
           {/* Slot 2: Schedule Date */}
-          {centers.filter(c => c.canSchedule).length > 0 && (
-            <div className="bg-slate-800/40 backdrop-blur border border-white/5 rounded-3xl p-8 shadow-xl min-h-[480px]">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-500">
-                  <FaCalendarAlt size={20} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-white tracking-tight uppercase">Schedule Date</h2>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Step 2: Set Collection Day</p>
-                </div>
+          <div className="bg-slate-800/40 backdrop-blur border border-white/5 rounded-3xl p-8 shadow-xl min-h-[480px]">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-500">
+                <FaCalendarAlt size={20} />
               </div>
-              <form onSubmit={createSchedule} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Sanctioned Center</label>
-                  <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none">
-                    <option value="">Select Center...</option>
-                    {centers.filter(c => c.canSchedule).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount.toLocaleString()}</option>)}
-                    {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} ({c.branch}) - [Waiting Credit]</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Scheduled Date</label>
-                  <div className="relative group">
-                    <input 
-                      ref={dateInputRef}
-                      type="date" 
-                      value={selectedDate} 
-                      onChange={(e) => setSelectedDate(e.target.value)} 
-                      className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none cursor-pointer" 
-                    />
-                    <div 
-                      onClick={() => dateInputRef.current?.showPicker()}
-                      className="absolute right-5 top-1/2 -translate-y-1/2 text-indigo-500 cursor-pointer hover:text-indigo-400 transition-colors"
-                    >
-                      <FaCalendarAlt size={18} />
-                    </div>
+              <div>
+                <h2 className="text-xl font-black text-white tracking-tight uppercase">Schedule Date</h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Step 2: Set Collection Day</p>
+              </div>
+            </div>
+            <form onSubmit={createSchedule} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Sanctioned Center</label>
+                <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none">
+                  <option value="">Select Center...</option>
+                  {centers.filter(c => c.canSchedule).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount.toLocaleString()}</option>)}
+                  {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} ({c.branch}) - [Waiting Credit]</option>)}
+                </select>
+                {centers.filter(c => c.canSchedule).length === 0 && (
+                  <div className="mt-2 text-center">
+                    <p className="text-[10px] text-indigo-500/50 font-bold animate-pulse uppercase tracking-widest">Waiting for Disbursement Credit...</p>
+                    {centers.filter(c => c.isWaitingCredit).length > 0 && (
+                      <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest mt-1 italic">
+                        ({centers.filter(c => c.isWaitingCredit).length} Centers currently in Disbursement)
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Scheduled Date</label>
+                <div className="relative group">
+                  <input 
+                    ref={dateInputRef}
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={(e) => setSelectedDate(e.target.value)} 
+                    className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none cursor-pointer" 
+                  />
+                  <div 
+                    onClick={() => dateInputRef.current?.showPicker()}
+                    className="absolute right-5 top-1/2 -translate-y-1/2 text-indigo-500 cursor-pointer hover:text-indigo-400 transition-colors"
+                  >
+                    <FaCalendarAlt size={18} />
                   </div>
                 </div>
-                <button type="submit" disabled={actionLoading} className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 uppercase tracking-widest text-xs active:scale-95 disabled:opacity-50 transition-all">
-                  {actionLoading ? 'Loading...' : 'Set Schedule'}
-                </button>
-              </form>
-            </div>
-          )}
+              </div>
+              <button type="submit" disabled={actionLoading} className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 uppercase tracking-widest text-xs active:scale-95 disabled:opacity-50 transition-all">
+                {actionLoading ? 'Loading...' : 'Set Schedule'}
+              </button>
+            </form>
+          </div>
         </div>
       </main>
     </div>

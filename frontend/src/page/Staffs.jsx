@@ -132,7 +132,7 @@ export default function Staffs() {
 
                 <div className="grid grid-cols-1 gap-4">
                   <div className="bg-[#0a0f1c] p-4 rounded-2xl border border-white/5 shadow-inner">
-                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Total Collection Responsibility</p>
+                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Pending Collection Balance</p>
                     <div className="flex items-center gap-2">
                       <FaCoins className="text-amber-500" />
                       <span className="text-2xl font-black text-white tracking-tighter">

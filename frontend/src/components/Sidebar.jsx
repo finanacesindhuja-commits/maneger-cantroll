@@ -9,7 +9,7 @@ import { API_URL } from '../config';
 export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [counts, setCounts] = useState({ loans: 0, collections: 0 });
+  const [counts, setCounts] = useState({ loans: 0, schedules: 0, collections: 0 });
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -18,7 +18,8 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
         const data = await res.json();
         if (res.ok) {
           setCounts({
-            loans: (data.pendingSanctionCount || 0) + (data.pendingScheduleCount || 0),
+            loans: (data.pendingSanctionCount || 0),
+            schedules: (data.pendingScheduleCount || 0),
             collections: data.pendingCollectionCount || 0
           });
         }
@@ -32,8 +33,9 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine />, path: '/dashboard' },
-    { id: 'loans', label: 'Loans', icon: <FaFileInvoiceDollar />, path: '/loans', badge: 'loans', badgeColor: 'bg-amber-500' },
-    { id: 'collections', label: 'Collections', icon: <FaCalendarAlt />, path: '/collections', badge: 'collections', badgeColor: 'bg-emerald-500' },
+    { id: 'loans', label: 'Amount Approval', icon: <FaFileInvoiceDollar />, path: '/loans', badge: 'loans', badgeColor: 'bg-amber-500' },
+    { id: 'schedule', label: 'Schedule Date', icon: <FaCalendarAlt />, path: '/schedule-date', badge: 'schedules', badgeColor: 'bg-indigo-500' },
+    { id: 'collections', label: 'Collections', icon: <FaHistory />, path: '/collections', badge: 'collections', badgeColor: 'bg-emerald-500' },
     { id: 'staffs', label: 'Staffs', icon: <FaUsers />, path: '/staffs' },
   ];
 

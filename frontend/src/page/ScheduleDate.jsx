@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FaFileInvoiceDollar, FaCalendarAlt, FaUserCircle, FaBars, FaHistory, FaCheckCircle
+  FaCalendarAlt, FaUserCircle, FaBars, FaHistory, FaCheckCircle
 } from 'react-icons/fa';
 import { API_URL } from '../config';
 import Sidebar from '../components/Sidebar';
 
-export default function Loans() {
+export default function ScheduleDate() {
   const navigate = useNavigate();
   const dateInputRef = useRef(null);
   const staffId = localStorage.getItem('staffId');
@@ -25,24 +25,16 @@ export default function Loans() {
   }
 
   const [centers, setCenters] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [selectedCenter, setSelectedCenter] = useState('');
-  const [selectedAmount, setSelectedAmount] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const [formMembers, setFormMembers] = useState([]);
-  const [formLoading, setFormLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const amountOptions = [
-    { value: 10000, label: '₹10,000 (12-Week Plan)' },
-    { value: 12000, label: '₹12,000 (16-Week Plan)' },
-    { value: 13000, label: '₹13,000 (18-Week Plan)' },
-    { value: 15000, label: '₹15,000' },
-    { value: 20000, label: '₹20,000' }
-  ];
-
   useEffect(() => {
     fetchCenters();
+    fetchSchedules();
   }, []);
 
   const fetchCenters = async () => {
@@ -53,43 +45,39 @@ export default function Loans() {
     } catch (err) { console.error('Centers error:', err); }
   };
 
-  const fetchFormMembers = async (centerId) => {
-    if (!centerId) return setFormMembers([]);
-    setFormLoading(true);
+  const fetchSchedules = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/centers/${centerId}/members`);
+      const res = await fetch(`${API_URL}/api/schedules`);
       const data = await res.json();
-      if (res.ok) setFormMembers(data);
-    } catch (err) { console.error('Form members error:', err); }
-    finally { setFormLoading(false); }
+      if (res.ok) setSchedules(data);
+    } catch (err) { console.error('Schedules error:', err); }
   };
 
-  const handleSanctionCenter = async (e) => {
+  const createSchedule = async (e) => {
     e.preventDefault();
-    if (!selectedCenter || !selectedAmount) return alert('Please select center and amount');
-    const selectedPlan = amountOptions.find(p => p.value === Number(selectedAmount));
+    if (!selectedCenter || !selectedDate) return alert('Please select center and date');
+    const centerObj = centers.find(c => c.id === Number(selectedCenter));
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/centers/${selectedCenter}/sanction`, {
+      const res = await fetch(`${API_URL}/api/schedules/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          amountSanctioned: selectedAmount, 
-          schemeName: selectedPlan?.label || 'General Plan',
-          staffId 
+        body: JSON.stringify({
+          centerId: selectedCenter,
+          centerName: centerObj?.name || 'Unknown',
+          scheduledDate: selectedDate,
+          amount: centerObj?.amount || 0
         })
       });
       if (res.ok) {
-        setSuccessMsg(`✅ Amount of ₹${selectedAmount} approved successfully!`);
+        setSuccessMsg(`✅ Schedule set successfully for ${selectedDate}!`);
         setTimeout(() => setSuccessMsg(''), 4000);
         setSelectedCenter('');
-        setSelectedAmount('');
+        setSelectedDate('');
+        fetchSchedules();
         fetchCenters();
-      } else {
-        const data = await res.json();
-        alert('Error: ' + data.error);
       }
-    } catch (err) { console.error('Sanction error:', err); }
+    } catch (err) { console.error('Schedule error:', err); }
     finally { setActionLoading(false); }
   };
 
@@ -118,7 +106,7 @@ export default function Loans() {
             </div>
             <div>
               <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{staffId} • {branch || 'General'}</p>
-              <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Loan Management</h1>
+              <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Schedule Date</h1>
             </div>
           </div>
           <button onClick={() => window.location.reload()} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
@@ -127,7 +115,6 @@ export default function Loans() {
         </header>
 
         <div className="max-w-3xl">
-          {/* Slot 1: Amount Approval */}
           <div className="bg-slate-800/40 backdrop-blur border border-white/5 rounded-3xl p-8 shadow-xl min-h-[480px]">
             {successMsg && (
               <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 animate-[pulse_2s_ease-in-out_infinite]">
@@ -138,56 +125,55 @@ export default function Loans() {
               </div>
             )}
             <div className="flex items-center gap-4 mb-8">
-              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500">
-                <FaFileInvoiceDollar size={20} />
+              <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-500">
+                <FaCalendarAlt size={20} />
               </div>
               <div>
-                <h2 className="text-xl font-black text-white tracking-tight uppercase">Amount Approval</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Step 1: Sanction Amount</p>
+                <h2 className="text-xl font-black text-white tracking-tight uppercase">Schedule Date</h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Set Collection Day</p>
               </div>
             </div>
-            <form onSubmit={handleSanctionCenter} className="space-y-6">
+            <form onSubmit={createSchedule} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Select Center</label>
-                <select value={selectedCenter} onChange={(e) => { setSelectedCenter(e.target.value); fetchFormMembers(e.target.value); }} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Sanctioned Center</label>
+                <select value={selectedCenter} onChange={(e) => setSelectedCenter(e.target.value)} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none">
                   <option value="">Select Center...</option>
-                  {centers.filter(c => c.canSanction).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch})</option>)}
+                  {centers.filter(c => c.canSchedule).map(c => <option key={c.id} value={c.id}>{c.name} ({c.branch}) - ₹{c.amount?.toLocaleString()}</option>)}
+                  {centers.filter(c => c.isWaitingCredit).map(c => <option key={c.id} value="" disabled className="text-slate-600 italic">{c.name} ({c.branch}) - [Waiting Credit]</option>)}
                 </select>
-                {centers.filter(c => c.canSanction).length === 0 && (
+                {centers.filter(c => c.canSchedule).length === 0 && (
                   <div className="mt-2 text-center">
-                    <p className="text-[10px] text-amber-500/50 font-bold animate-pulse uppercase tracking-widest">Wait for PD Approval updates...</p>
-                    {centers.filter(c => c.stage === 'PD').length > 0 && (
+                    <p className="text-[10px] text-indigo-500/50 font-bold animate-pulse uppercase tracking-widest">Waiting for Disbursement Credit...</p>
+                    {centers.filter(c => c.isWaitingCredit).length > 0 && (
                       <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest mt-1 italic">
-                        ({centers.filter(c => c.stage === 'PD').length} Centers currently in PD Verification)
+                        ({centers.filter(c => c.isWaitingCredit).length} Centers currently in Disbursement)
                       </p>
                     )}
                   </div>
                 )}
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Select Amount</label>
-                <select value={selectedAmount} onChange={(e) => setSelectedAmount(e.target.value)} className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none">
-                  <option value="">Pick Amount...</option>
-                  {amountOptions.map(amt => <option key={amt.value} value={amt.value}>{amt.label}</option>)}
-                </select>
-              </div>
-              <button type="submit" disabled={actionLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-slate-900 font-black py-4 rounded-2xl shadow-xl shadow-amber-500/20 uppercase tracking-widest text-xs active:scale-95 disabled:opacity-50 transition-all">
-                {actionLoading ? 'Loading...' : 'Approve Amount'}
-              </button>
-            </form>
-            {selectedCenter && (
-              <div className="mt-8 pt-6 border-t border-white/5">
-                <h3 className="text-[10px] font-black text-white uppercase tracking-widest mb-4">Pending Members</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {formMembers.map(m => (
-                    <div key={m.id} className="bg-white/[0.04] border border-white/10 p-4 rounded-2xl text-center shadow-lg">
-                      <span className="text-xs font-black text-white block truncate uppercase tracking-tight">{m.name}</span>
-                      <span className="text-[10px] text-amber-500 font-black font-mono">APP ID: {m.member_no || m.id}</span>
-                    </div>
-                  ))}
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Scheduled Date</label>
+                <div className="relative group">
+                  <input 
+                    ref={dateInputRef}
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={(e) => setSelectedDate(e.target.value)} 
+                    className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none cursor-pointer" 
+                  />
+                  <div 
+                    onClick={() => dateInputRef.current?.showPicker()}
+                    className="absolute right-5 top-1/2 -translate-y-1/2 text-indigo-500 cursor-pointer hover:text-indigo-400 transition-colors"
+                  >
+                    <FaCalendarAlt size={18} />
+                  </div>
                 </div>
               </div>
-            )}
+              <button type="submit" disabled={actionLoading} className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 uppercase tracking-widest text-xs active:scale-95 disabled:opacity-50 transition-all">
+                {actionLoading ? 'Loading...' : 'Set Schedule'}
+              </button>
+            </form>
           </div>
         </div>
       </main>

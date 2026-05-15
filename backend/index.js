@@ -999,10 +999,11 @@ app.get('/api/staff/performance', async (req, res) => {
       .select('id, staff_id');
     if (centerError) throw centerError;
 
-    // 3. Fetch all collection schedules (only the needed columns for aggregation)
+    // 3. Fetch all pending collection schedules (only the needed columns for aggregation)
     const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
-      .select('center_id, amount');
+      .select('center_id, amount')
+      .neq('status', 'Received');
     if (schError) throw schError;
 
     // 4. Aggregate performance data

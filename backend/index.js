@@ -180,13 +180,22 @@ app.get('/api/stats', async (req, res) => {
       .eq('scheduled_date', today)
       .neq('status', 'Received');
 
+    // 6. Total Missing Collection Amount (Up to today)
+    const { data: missingCollections } = await supabase
+      .from('collection_schedules')
+      .select('amount')
+      .neq('status', 'Received')
+      .lte('scheduled_date', today);
+    const missingAmount = (missingCollections || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+
     res.json({
       totalDisbursed: totalCredited,
       pendingDisbursement: pendingDisbursement,
       totalApprovedMembers: memberCount || 0,
       pendingSanctionCount: pendingSanctionCenters,
       pendingScheduleCount: pendingScheduleCenters,
-      pendingCollectionCount: pendingCollectionCount || 0
+      pendingCollectionCount: pendingCollectionCount || 0,
+      missingAmount: missingAmount
     });
   } catch (error) {
     console.error('Stats error:', error);

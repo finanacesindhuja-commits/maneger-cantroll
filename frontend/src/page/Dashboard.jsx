@@ -101,7 +101,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 mb-10">
           {[
             { label: 'Total Credited', value: `₹${(stats.totalDisbursed || 0).toLocaleString()}`, icon: <FaCheckCircle />, color: 'from-emerald-500 to-teal-600' },
-            { label: 'Pending Credit', value: `₹${(stats.pendingDisbursement || 0).toLocaleString()}`, icon: <FaClock />, color: 'from-blue-400 to-indigo-500' },
+            { label: 'Pending Credit', value: `₹${(stats.missingAmount || 0).toLocaleString()}`, icon: <FaClock />, color: 'from-blue-400 to-indigo-500' },
             { label: 'Pending Sanction', value: stats.totalApprovedMembers, icon: <FaUsers />, color: 'from-amber-400 to-orange-500' }
           ].map((stat, i) => (
             <div key={i} className="bg-slate-800/40 border border-white/5 p-6 md:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all">

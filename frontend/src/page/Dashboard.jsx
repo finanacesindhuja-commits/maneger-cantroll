@@ -100,15 +100,38 @@ export default function Dashboard() {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 mb-10">
           {[
-            { label: 'Total Credited', value: `₹${(stats.totalDisbursed || 0).toLocaleString()}`, icon: <FaCheckCircle />, color: 'from-emerald-500 to-teal-600' },
-            { label: 'Pending Credit', value: `₹${(stats.missingAmount || 0).toLocaleString()}`, icon: <FaClock />, color: 'from-blue-400 to-indigo-500' },
-            { label: 'Pending Sanction', value: stats.totalApprovedMembers, icon: <FaUsers />, color: 'from-amber-400 to-orange-500' }
+            { 
+              label: 'Total Credited', 
+              value: `₹${(stats.totalDisbursed || 0).toLocaleString()}`, 
+              icon: <FaCheckCircle />, 
+              color: 'from-emerald-500 to-teal-600',
+              borderClass: 'border-white/5'
+            },
+            { 
+              label: 'Total Collection Pending', 
+              value: `₹${(stats.missingAmount || 0).toLocaleString()}`, 
+              icon: <FaClock />, 
+              color: 'from-blue-400 to-indigo-500',
+              borderClass: 'border-white/5'
+            },
+            { 
+              label: 'Pending Sanction', 
+              value: stats.totalApprovedMembers, 
+              icon: <FaUsers />, 
+              color: stats.totalApprovedMembers > 0 
+                ? 'from-rose-500 to-orange-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.15)]' 
+                : 'from-slate-700 to-slate-800 text-slate-500',
+              borderClass: stats.totalApprovedMembers > 0 
+                ? 'border-rose-500/50 animate-[pulse_2s_infinite]' 
+                : 'border-white/5 opacity-60',
+              isAlert: stats.totalApprovedMembers > 0
+            }
           ].map((stat, i) => (
-            <div key={i} className="bg-slate-800/40 border border-white/5 p-6 md:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all">
+            <div key={i} className={`bg-slate-800/40 border p-6 md:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all ${stat.borderClass}`}>
               <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-5 blur-3xl`}></div>
-              <div className="text-slate-400 text-xl md:text-2xl mb-4 text-indigo-400/50">{stat.icon}</div>
+              <div className={`text-xl md:text-2xl mb-4 ${stat.isAlert ? 'text-rose-400 animate-bounce' : 'text-indigo-400/50'}`}>{stat.icon}</div>
               <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{stat.label}</p>
-              <h3 className="text-2xl md:text-3xl font-black text-white tracking-tighter">{stat.value}</h3>
+              <h3 className={`text-2xl md:text-3xl font-black tracking-tighter ${stat.isAlert ? 'text-rose-400' : 'text-white'}`}>{stat.value}</h3>
             </div>
           ))}
         </div>
@@ -156,18 +179,43 @@ export default function Dashboard() {
                     </td>
                     <td className="px-5 md:px-8 py-3 md:py-6 font-black text-white block md:table-cell">
                       <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Total Amount</span>
-                      ₹{(item.totalAmount || 0).toLocaleString()}
+                      {item.status === 'Pending Sanction' ? (
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest italic">Waiting Sanction</span>
+                      ) : (
+                        `₹${(item.totalAmount || 0).toLocaleString()}`
+                      )}
                     </td>
                     <td className="px-5 md:px-8 py-3 md:py-6 block md:table-cell">
                       <span className="md:hidden text-[9px] text-slate-500 uppercase block mb-1">Status</span>
-                      <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${item.status === 'Credited' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5' : item.status === 'Stored' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse'}`}>
-                        {item.status === 'Credited' ? <><FaCheckCircle className="inline mr-1" /> Credited</> : item.status === 'Stored' ? <><FaHistory className="inline mr-1" /> Stored</> : <><FaClock className="inline mr-1" /> Sent (Wait Credit)</>}
+                      <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                        item.status === 'Credited' 
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5' 
+                          : item.status === 'Stored' 
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
+                            : item.status === 'Pending Sanction'
+                              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse'
+                              : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse'
+                      }`}>
+                        {item.status === 'Credited' ? (
+                          <><FaCheckCircle className="inline mr-1" /> Credited</>
+                        ) : item.status === 'Stored' ? (
+                          <><FaHistory className="inline mr-1" /> Stored</>
+                        ) : item.status === 'Pending Sanction' ? (
+                          <><FaClock className="inline mr-1" /> Pending Sanction</>
+                        ) : (
+                          <><FaClock className="inline mr-1" /> Sent (Wait Credit)</>
+                        )}
                       </span>
                     </td>
                     <td className="px-5 md:px-8 py-5 md:py-6 text-left md:text-right block md:table-cell border-t border-white/5 md:border-t-0 bg-black/10 md:bg-transparent">
                       {item.status === 'Stored' && (
                         <button onClick={() => handleSendToDisbursement(item.centerId)} className="w-full md:w-auto text-[10px] bg-indigo-600 text-white font-black px-4 py-3 md:py-2 rounded-xl uppercase active:scale-95 shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-all">
                           Send to Disburse Application
+                        </button>
+                      )}
+                      {item.status === 'Pending Sanction' && (
+                        <button onClick={() => navigate('/loans')} className="w-full md:w-auto text-[10px] bg-gradient-to-r from-rose-500 to-amber-500 text-slate-900 font-black px-4 py-3 md:py-2 rounded-xl uppercase active:scale-95 shadow-lg shadow-rose-500/20 hover:from-rose-400 hover:to-amber-400 transition-all">
+                          Sanction Amount
                         </button>
                       )}
                     </td>

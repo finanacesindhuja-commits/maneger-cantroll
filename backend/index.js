@@ -2,8 +2,33 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const compression = require('compression');
+const NodeCache = require('node-cache');
 
 const app = express();
+const cache = new NodeCache({ stdTTL: 15 }); // Cache for 15 seconds
+
+const flushCache = () => cache.flushAll();
+
+const cacheMiddleware = (duration = 15) => (req, res, next) => {
+  if (req.method !== 'GET') return next();
+  const key = req.originalUrl;
+  const cachedResponse = cache.get(key);
+  if (cachedResponse) {
+    return res.json(cachedResponse);
+  } else {
+    res.sendResponse = res.json;
+    res.json = (body) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        cache.set(key, body, duration);
+      }
+      res.sendResponse(body);
+    };
+    next();
+  }
+};
+
+app.use(compression());
 const allowedOrigins = [
   process.env.ALLOWED_ORIGIN,
   'https://maneger-cantroll.vercel.app',
@@ -28,6 +53,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Global cache invalidation on successful mutations
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && res.statusCode >= 200 && res.statusCode < 300) {
+      flushCache();
+    }
+  });
+  next();
+});
 const PORT = process.env.PORT || 5001;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -94,98 +128,127 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Reusable helper to fetch all records by handling PostgREST default limit (1000) through range pagination
+async function fetchAll(queryFn) {
+  let allData = [];
+  let offset = 0;
+  const limit = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await queryFn().range(offset, offset + limit - 1);
+    if (error) throw error;
+    if (data && data.length > 0) {
+      allData = allData.concat(data);
+      offset += limit;
+      if (data.length < limit) {
+        hasMore = false;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+  return allData;
+}
+
 // Fetch stats for the dashboard and sidebar indicators
-app.get('/api/stats', async (req, res) => {
+app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
   try {
-    // 1. Total Credited: Sum only for loans CREDITED in the CURRENT MONTH
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
+    const today = new Date().toISOString().split('T')[0];
 
-    const { data: creditedLoans, error: creditError } = await supabase
-      .from('loans')
-      .select('amount_sanctioned')
-      .in('status', ['CREDITED', 'DISBURSED', 'COMPLETED'])
-      .gte('credited_at', startOfMonth.toISOString());
+    const [
+      creditedLoans,
+      pendingLoans,
+      pdData,
+      readyForPdLoansRaw,
+      psLoans,
+      crLoans,
+      schData,
+      missingCollections,
+      pendingCollectionCountObj
+    ] = await Promise.all([
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('amount_sanctioned')
+          .in('status', ['CREDITED', 'DISBURSED', 'COMPLETED'])
+          .gte('credited_at', startOfMonth.toISOString())
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('amount_sanctioned')
+          .eq('disbursement_app_status', 'READY')
+          .neq('status', 'CREDITED')
+          .neq('status', 'COMPLETED')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('pd_verifications')
+          .select('member_id')
+          .or('status.ilike.APPROVED,pd_verified.eq.true')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('center_id, member_id')
+          .eq('status', 'READY FOR PD')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('center_id')
+          .eq('status', 'APPROVED')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('center_id')
+          .eq('status', 'CREDITED')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('collection_schedules')
+          .select('center_id')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('collection_schedules')
+          .select('amount')
+          .neq('status', 'Received')
+          .lte('scheduled_date', today)
+      ),
+      supabase
+        .from('collection_schedules')
+        .select('*', { count: 'exact', head: true })
+        .eq('scheduled_date', today)
+        .neq('status', 'Received')
+    ]);
 
-    if (creditError) throw creditError;
+    // Post-processing in memory
     const totalCredited = (creditedLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
-
-    // 2. Pending Disbursement: Sum of amount_sanctioned for loans READY but NOT yet CREDITED
-    const { data: pendingLoans, error: pendingError } = await supabase
-      .from('loans')
-      .select('amount_sanctioned')
-      .eq('disbursement_app_status', 'READY')
-      .neq('status', 'CREDITED')
-      .neq('status', 'COMPLETED');
-
-    if (pendingError) throw pendingError;
     const pendingDisbursement = (pendingLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
 
-    // 3. Pending Sanction: Member count (Waiting for Manager)
-    const { data: pdData } = await supabase
-      .from('pd_verifications')
-      .select('member_id')
-      .or('status.ilike.APPROVED,pd_verified.eq.true');
-    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
 
-    let readyForPdLoansCount = 0;
-    let readyForPdCenterIds = [];
+    // Filter ready for PD loans in memory
+    const readyLoans = (readyForPdLoansRaw || []).filter(l => approvedMemberIds.has(l.member_id));
+    const readyForPdLoansCount = readyLoans.length;
+    const readyForPdCenterIds = readyLoans.map(l => l.center_id);
 
-    if (approvedMemberIds.length > 0) {
-      const { data: readyLoans } = await supabase
-        .from('loans')
-        .select('center_id')
-        .eq('status', 'READY FOR PD')
-        .in('member_id', approvedMemberIds);
+    const approvedMemberCount = (psLoans || []).length;
+    const memberCount = approvedMemberCount + readyForPdLoansCount;
 
-      readyForPdLoansCount = readyLoans?.length || 0;
-      readyForPdCenterIds = readyLoans?.map(l => l.center_id) || [];
-    }
-
-    const { count: approvedMemberCount } = await supabase
-      .from('loans')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'APPROVED');
-
-    const memberCount = (approvedMemberCount || 0) + readyForPdLoansCount;
-
-    // 4. Sidebar Counts (Center based)
-    // Pending Sanction Centers
-    const { data: psLoans } = await supabase
-      .from('loans')
-      .select('center_id')
-      .eq('status', 'APPROVED');
     const pendingSanctionCenters = [...new Set([...(psLoans?.map(l => l.center_id) || []), ...readyForPdCenterIds].filter(Boolean))].length;
 
-    // Pending Schedule Centers
-    const { data: crLoans } = await supabase
-      .from('loans')
-      .select('center_id')
-      .eq('status', 'CREDITED');
-
-    const { data: schData } = await supabase
-      .from('collection_schedules')
-      .select('center_id');
     const scheduledCenterIds = new Set(schData?.map(s => s.center_id).filter(Boolean));
-
     const pendingScheduleCenters = [...new Set(crLoans?.map(l => l.center_id).filter(Boolean))]
       .filter(id => !scheduledCenterIds.has(id)).length;
 
-    // 5. Pending Collection Approvals (For today)
-    const today = new Date().toISOString().split('T')[0];
-    const { count: pendingCollectionCount } = await supabase
-      .from('collection_schedules')
-      .select('*', { count: 'exact', head: true })
-      .eq('scheduled_date', today)
-      .neq('status', 'Received');
-
-    // 6. Total Missing Collection Amount (Up to today)
-    const { data: missingCollections } = await supabase
-      .from('collection_schedules')
-      .select('amount')
-      .neq('status', 'Received')
-      .lte('scheduled_date', today);
+    const pendingCollectionCount = pendingCollectionCountObj.count || 0;
     const missingAmount = (missingCollections || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
 
     res.json({
@@ -220,33 +283,49 @@ app.get('/api/profile/:staffId', async (req, res) => {
 });
 
 // Fetch centers with active loan activity
-app.get('/api/centers', async (req, res) => {
+app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
   try {
-    // Fetch ALL PD verifications that are truly approved
-    const { data: pdData } = await supabase
-      .from('pd_verifications')
-      .select('member_id')
-      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    // Fetch all required data concurrently for maximum performance
+    const [pdData, regularLoans, readyLoansRaw, staffData, allMembers, allCenters] = await Promise.all([
+      fetchAll(() => 
+        supabase
+          .from('pd_verifications')
+          .select('member_id')
+          .or('status.ilike.APPROVED,pd_verified.eq.true')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
+          .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED', 'DISBURSED'])
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
+          .eq('status', 'READY FOR PD')
+      ),
+      supabase
+        .from('staff')
+        .select('staff_id, branch'),
+      fetchAll(() => 
+        supabase
+          .from('members')
+          .select('id, center_id')
+      ),
+      supabase
+        .from('centers')
+        .select('*')
+    ]);
+
+    if (staffData.error) throw staffData.error;
+    if (allCenters.error) throw allCenters.error;
+
     const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+    const approvedMemberSet = new Set(approvedMemberIds);
 
-    // 1. Get unique center IDs and their statuses
-    // Fetch APPROVED, SANCTIONED, CREDITED, and DISBURSED loans
-    const { data: regularLoans, error: loanError } = await supabase
-      .from('loans')
-      .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
-      .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED', 'DISBURSED']);
-
-    if (loanError) throw loanError;
-
-    let readyLoans = [];
-    if (approvedMemberIds.length > 0) {
-      const { data: rLoans } = await supabase
-        .from('loans')
-        .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
-        .eq('status', 'READY FOR PD')
-        .in('member_id', approvedMemberIds);
-      if (rLoans) readyLoans = rLoans;
-    }
+    // Filter ready loans in memory
+    const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberSet.has(l.member_id));
 
     const activeLoans = [...(regularLoans || []), ...readyLoans];
 
@@ -254,31 +333,19 @@ app.get('/api/centers', async (req, res) => {
       return res.json([]);
     }
 
-    const readyCenterIds = [...new Set(activeLoans.map(l => l.center_id))].filter(Boolean);
+    const readyCenterIds = new Set(activeLoans.map(l => l.center_id).filter(Boolean));
 
-    // 2. Fetch only those centers
-    const { data: centers, error: centerError } = await supabase
-      .from('centers')
-      .select('*')
-      .in('id', readyCenterIds)
-      .order('name', { ascending: true });
-
-    // 2b. Fetch staff info to map branches to centers
-    const { data: staffData } = await supabase
-      .from('staff')
-      .select('staff_id, branch');
+    // Filter centers in memory and sort by name
+    const centers = (allCenters.data || [])
+      .filter(c => readyCenterIds.has(c.id));
+    centers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     const branchMap = {};
-    if (staffData) {
-      staffData.forEach(s => {
+    if (staffData.data) {
+      staffData.data.forEach(s => {
         if (s.staff_id) branchMap[s.staff_id] = s.branch;
       });
     }
-
-    // 2c. Fetch all members to check group-level completion
-    const { data: allMembers } = await supabase
-      .from('members')
-      .select('id, center_id');
 
     // 3. Attach stage info, branch, and stats to centers
     const enrichedCenters = centers.map(c => {
@@ -336,44 +403,92 @@ app.get('/api/centers', async (req, res) => {
 });
 
 // New Endpoint: Track all sanctioned centers and their disbursement status
-app.get('/api/loans/track-disbursement', async (req, res) => {
+app.get('/api/loans/track-disbursement', cacheMiddleware(10), async (req, res) => {
   try {
+    // 1. Fetch PD verifications that are approved
+    const { data: pdData } = await supabase
+      .from('pd_verifications')
+      .select('member_id')
+      .or('status.ilike.APPROVED,pd_verified.eq.true');
+    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
+
+    // 2. Fetch loans in 'APPROVED', 'READY FOR PD', 'SANCTIONED', or 'CREDITED' state
     const { data, error } = await supabase
       .from('loans')
       .select('center_id, status, amount_sanctioned, member_id, scheme_name, disbursement_app_status')
-      .in('status', ['SANCTIONED', 'CREDITED']);
+      .in('status', ['APPROVED', 'READY FOR PD', 'SANCTIONED', 'CREDITED']);
 
     if (error) throw error;
 
+    // Filter out 'READY FOR PD' loans that are not approved by PD verification
+    const filteredLoans = (data || []).filter(l => {
+      if (l.status === 'READY FOR PD') {
+        return approvedMemberIds.has(l.member_id);
+      }
+      return true;
+    });
+
     // Group by center
-    const centerGroups = data.reduce((acc, l) => {
+    const centerGroups = filteredLoans.reduce((acc, l) => {
       const cid = l.center_id;
+      if (!cid) return acc;
+
       if (!acc[cid]) {
         acc[cid] = {
           centerId: cid,
           totalAmount: 0,
           status: 'Stored',
           members: 0,
-          scheme: l.scheme_name,
+          scheme: l.scheme_name || 'N/A',
           dbStatus: l.disbursement_app_status
         };
       }
-      acc[cid].totalAmount += (Number(l.amount_sanctioned) || 0);
       acc[cid].members += 1;
 
       // Determine display status based on database columns
-      if (l.status === 'DISBURSED') {
-        acc[cid].status = 'Active & Scheduled';
+      let currentStatus = 'Stored';
+      if (l.status === 'APPROVED' || l.status === 'READY FOR PD') {
+        currentStatus = 'Pending Sanction';
+      } else if (l.status === 'DISBURSED') {
+        currentStatus = 'Active & Scheduled';
       } else if (l.status === 'CREDITED') {
-        acc[cid].status = 'Credited';
+        currentStatus = 'Credited';
       } else if (l.disbursement_app_status === 'READY') {
-        acc[cid].status = 'Sent (Waiting Credit)';
+        currentStatus = 'Sent (Waiting Credit)';
       } else {
-        acc[cid].status = 'Stored';
+        currentStatus = 'Stored';
+      }
+
+      // Priority ordering for center status (display most urgent state)
+      const statusPriority = {
+        'Pending Sanction': 4,
+        'Stored': 3,
+        'Sent (Waiting Credit)': 2,
+        'Credited': 1,
+        'Active & Scheduled': 0
+      };
+
+      if (!acc[cid].currentStatusPriority || statusPriority[currentStatus] > acc[cid].currentStatusPriority) {
+        acc[cid].status = currentStatus;
+        acc[cid].currentStatusPriority = statusPriority[currentStatus];
+      }
+
+      // Accumulate the amount sanctioned (for APPROVED/READY FOR PD, this is null/0)
+      acc[cid].totalAmount += (Number(l.amount_sanctioned) || 0);
+
+      // Map scheme name
+      if (acc[cid].status === 'Pending Sanction') {
+        acc[cid].scheme = 'Waiting Sanction';
+      } else if (l.scheme_name) {
+        acc[cid].scheme = l.scheme_name;
       }
 
       return acc;
     }, {});
+
+    if (Object.keys(centerGroups).length === 0) {
+      return res.json([]);
+    }
 
     // Fetch center mapping to get staff_id, then staff to get branch
     const { data: centerDetails } = await supabase
@@ -424,30 +539,33 @@ app.get('/api/centers/:id/sanctioned-amount', async (req, res) => {
 });
 
 // 1. Fetch loans that are APPROVED (by PD) but NOT YET SANCTIONED (by Manager)
-app.get('/api/loans/sanction-queue', async (req, res) => {
+app.get('/api/loans/sanction-queue', cacheMiddleware(10), async (req, res) => {
   try {
-    const { data: pdData } = await supabase
-      .from('pd_verifications')
-      .select('member_id')
-      .or('status.ilike.APPROVED,pd_verified.eq.true');
-    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+    const [pdData, approvedLoans, readyLoansRaw] = await Promise.all([
+      fetchAll(() => 
+        supabase
+          .from('pd_verifications')
+          .select('member_id')
+          .or('status.ilike.APPROVED,pd_verified.eq.true')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('*, members(member_no)')
+          .eq('status', 'APPROVED')
+      ),
+      fetchAll(() => 
+        supabase
+          .from('loans')
+          .select('*, members(member_no)')
+          .eq('status', 'READY FOR PD')
+      )
+    ]);
 
-    const { data: approvedLoans, error: fetchError } = await supabase
-      .from('loans')
-      .select('*, members(member_no)')
-      .eq('status', 'APPROVED');
+    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
 
-    if (fetchError) throw fetchError;
-
-    let readyLoans = [];
-    if (approvedMemberIds.length > 0) {
-      const { data: rLoans } = await supabase
-        .from('loans')
-        .select('*, members(member_no)')
-        .eq('status', 'READY FOR PD')
-        .in('member_id', approvedMemberIds);
-      if (rLoans) readyLoans = rLoans;
-    }
+    // Filter in-memory
+    const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberIds.has(l.member_id));
 
     const loans = [...(approvedLoans || []), ...readyLoans];
 
@@ -560,7 +678,7 @@ app.put('/api/centers/:id', async (req, res) => {
 });
 
 // Fetch all collection schedules (Consolidated & Enriched)
-app.get('/api/schedules', async (req, res) => {
+app.get('/api/schedules', cacheMiddleware(10), async (req, res) => {
   try {
     const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
@@ -980,7 +1098,7 @@ app.get('/api/centers/:id/members', async (req, res) => {
 });
 
 // Fetch performance stats for each staff member
-app.get('/api/staff/performance', async (req, res) => {
+app.get('/api/staff/performance', cacheMiddleware(10), async (req, res) => {
   try {
     // 1. Fetch all staff members
     const { data: staffList, error: staffError } = await supabase
@@ -1008,14 +1126,15 @@ app.get('/api/staff/performance', async (req, res) => {
       .select('id, staff_id');
     if (centerError) throw centerError;
 
-    // 3. Fetch all pending collection schedules (up to today only)
+    // 3. Fetch all pending collection schedules (up to today only) using fetchAll helper to get all branches/centers
     const today = new Date().toISOString().split('T')[0];
-    const { data: schedules, error: schError } = await supabase
-      .from('collection_schedules')
-      .select('center_id, amount')
-      .neq('status', 'Received')
-      .lte('scheduled_date', today);
-    if (schError) throw schError;
+    const schedules = await fetchAll(() => 
+      supabase
+        .from('collection_schedules')
+        .select('center_id, amount')
+        .neq('status', 'Received')
+        .lte('scheduled_date', today)
+    );
 
     // 4. Aggregate performance data
     const staffPerformance = staffList

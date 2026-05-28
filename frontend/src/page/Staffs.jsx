@@ -14,7 +14,7 @@ export default function Staffs() {
   const [staffPerformance, setStaffPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
   const userName = localStorage.getItem('name');
-  const loggedInStaffId = localStorage.getItem('staffId'); // Using a different name to avoid conflict with 'staff' in map
+  const staffId = localStorage.getItem('staffId');
   const branch = localStorage.getItem('branch');
 
   if (role !== 'Manager') {
@@ -37,11 +37,7 @@ export default function Staffs() {
       const res = await fetch(`${API_URL}/api/staff/performance`);
       const data = await res.json();
       if (res.ok) {
-        // Frontend Filter: Ensure only Relationship Officers are shown
-        const filteredData = (data || []).filter(s => 
-          s.role && s.role.trim().toLowerCase() === 'relationship officer'
-        );
-        setStaffPerformance(filteredData);
+        setStaffPerformance(data);
       }
     } catch (err) {
       console.error('Staff fetch error:', err);
@@ -74,7 +70,7 @@ export default function Staffs() {
               <FaUsers className="text-white text-xl md:text-3xl" />
             </div>
             <div>
-              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{loggedInStaffId} • {branch || 'General'}</p>
+              <p className="text-[8px] md:text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em] mb-0.5">{staffId} • {branch || 'General'}</p>
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Staff Management</h1>
             </div>
           </div>

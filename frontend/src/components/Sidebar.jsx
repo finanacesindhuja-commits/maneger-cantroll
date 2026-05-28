@@ -18,8 +18,8 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
         const data = await res.json();
         if (res.ok) {
           setCounts({
-            loans: (data.pendingSanctionCount || 0),
-            schedules: (data.pendingScheduleCount || 0),
+            loans: data.pendingSanctionCount,
+            schedules: data.pendingScheduleCount,
             collections: data.pendingCollectionCount || 0
           });
         }
@@ -27,8 +27,6 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
     };
 
     fetchCounts();
-    const interval = setInterval(fetchCounts, 15000); // Refresh every 15s for better responsiveness
-    return () => clearInterval(interval);
   }, []);
 
   const menuItems = [

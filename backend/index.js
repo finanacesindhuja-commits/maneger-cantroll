@@ -999,11 +999,13 @@ app.get('/api/staff/performance', async (req, res) => {
       .select('id, staff_id');
     if (centerError) throw centerError;
 
-    // 3. Fetch all pending collection schedules (only the needed columns for aggregation)
+    // 3. Fetch all pending collection schedules (up to today only)
+    const today = new Date().toISOString().split('T')[0];
     const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
       .select('center_id, amount')
-      .neq('status', 'Received');
+      .neq('status', 'Received')
+      .lte('scheduled_date', today);
     if (schError) throw schError;
 
     // 4. Aggregate performance data

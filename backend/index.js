@@ -85,12 +85,12 @@ app.post('/api/login', async (req, res) => {
 
   try {
     // Strictly verify credentials against the Supabase staff table
-    // Using ilike or converting to uppercase for case-insensitivity
+    // Using eq with uppercase for fast case-normalized matching
     const { data: user, error: dbError } = await supabase
       .from('staff')
       .select('*')
-      .ilike('staff_id', staffId)
-      .eq('password', password)
+      .eq('staff_id', String(staffId || '').trim().toUpperCase())
+      .eq('password', String(password || '').trim())
       .eq('role', 'Manager')
       .single();
 
@@ -101,8 +101,8 @@ app.post('/api/login', async (req, res) => {
       const { data: anyUser } = await supabase
         .from('staff')
         .select('role, staff_id')
-        .ilike('staff_id', staffId)
-        .eq('password', password)
+        .eq('staff_id', String(staffId || '').trim().toUpperCase())
+        .eq('password', String(password || '').trim())
         .single();
 
       if (anyUser) {

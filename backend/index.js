@@ -1222,6 +1222,106 @@ app.get('/api/staff/performance', cacheMiddleware(10), async (req, res) => {
   }
 });
 
+// Staff Daily Performance: per-staff today's target, collected, efficiency, center breakdown
+app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+
+    // 1. Fetch all staff (RO only)
+    const { data: staffList, error: staffError } = await supabase
+      .from('staff')
+      .select('staff_id, name, branch, role');
+    if (staffError) throw staffError;
+
+    // 2. Fetch all centers
+    const { data: centers, error: centerError } = await supabase
+      .from('centers')
+      .select('id, name, staff_id');
+    if (centerError) throw centerError;
+
+    // 3. Fetch ALL schedules for the selected date
+    const { data: schedules, error: schError } = await supabase
+      .from('collection_schedules')
+      .select('id, center_id, center_name, member_name, amount, collected_amount, status, scheduled_date, approved_at')
+      .eq('scheduled_date', date);
+    if (schError) throw schError;
+
+    // 4. Build center → staff map
+    const centerToStaff = {};
+    centers.forEach(c => { centerToStaff[c.id] = { staff_id: c.staff_id, center_name: c.name }; });
+
+    // 5. Build staff lookup
+    const staffMap = {};
+    staffList
+      .filter(s => s.role && s.role.trim().toLowerCase() === 'relationship officer')
+      .forEach(s => {
+        staffMap[s.staff_id] = {
+          staff_id: s.staff_id,
+          staff_name: s.name,
+          branch: s.branch || 'N/A',
+          target: 0,
+          collected: 0,
+          centers: {}
+        };
+      });
+
+    // 6. Aggregate per staff from schedules
+    (schedules || []).forEach(s => {
+      const centerInfo = centerToStaff[s.center_id];
+      if (!centerInfo || !centerInfo.staff_id) return;
+      const sid = centerInfo.staff_id;
+      if (!staffMap[sid]) return;
+
+      const amt = Number(s.amount) || 0;
+      const collAmt = (s.status === 'Paid' || s.status === 'Received')
+        ? (Number(s.collected_amount) || amt)
+        : 0;
+
+      staffMap[sid].target += amt;
+      staffMap[sid].collected += collAmt;
+
+      const cid = s.center_id;
+      if (!staffMap[sid].centers[cid]) {
+        staffMap[sid].centers[cid] = {
+          center_id: cid,
+          center_name: centerInfo.center_name || s.center_name || 'Unknown',
+          target: 0,
+          collected: 0,
+          members: []
+        };
+      }
+      staffMap[sid].centers[cid].target += amt;
+      staffMap[sid].centers[cid].collected += collAmt;
+      staffMap[sid].centers[cid].members.push({
+        member_name: s.member_name,
+        amount: amt,
+        collected: collAmt,
+        status: s.status
+      });
+    });
+
+    // 7. Format result
+    const result = Object.values(staffMap)
+      .filter(s => s.target > 0) // only staff who have something scheduled today
+      .map(s => ({
+        staff_id: s.staff_id,
+        staff_name: s.staff_name,
+        branch: s.branch,
+        target: s.target,
+        collected: s.collected,
+        pending: Math.max(0, s.target - s.collected),
+        efficiency: s.target > 0 ? Math.round((s.collected / s.target) * 100) : 0,
+        centers: Object.values(s.centers)
+      }))
+      .sort((a, b) => b.efficiency - a.efficiency);
+
+    res.json({ date, staffPerformance: result });
+  } catch (error) {
+    console.error('Staff daily performance error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Manager Control Backend running on port ${PORT}`);
 });

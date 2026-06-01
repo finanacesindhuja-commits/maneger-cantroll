@@ -741,6 +741,32 @@ app.get('/api/schedules', cacheMiddleware(10), async (req, res) => {
   }
 });
 
+const GOVT_HOLIDAYS_2026 = [
+  '2026-01-01', // New Year's Day
+  '2026-01-15', // Pongal
+  '2026-01-16', // Thiruvalluvar Day
+  '2026-01-17', // Uzhavar Thirunal
+  '2026-01-26', // Republic Day
+  '2026-02-01', // Thai Poosam
+  '2026-03-19', // Telugu New Year's Day
+  '2026-03-21', // Ramzan (Id-ul-Fitr)
+  '2026-03-31', // Mahavir Jayanti
+  '2026-04-03', // Good Friday
+  '2026-04-14', // Tamil New Year / Dr. Ambedkar Jayanti
+  '2026-05-01', // May Day
+  '2026-05-28', // Bakrid (Id-ul-Zuha)
+  '2026-06-26', // Muharram
+  '2026-08-15', // Independence Day
+  '2026-08-26', // Milad-un-Nabi
+  '2026-09-04', // Krishna Jayanti
+  '2026-09-14', // Vinayakar Chathurthi
+  '2026-10-02', // Gandhi Jayanti
+  '2026-10-18', // Ayutha Pooja
+  '2026-10-19', // Vijaya Dashami
+  '2026-11-08', // Deepavali
+  '2026-12-25'  // Christmas Day
+];
+
 // Create a new collection schedule (Supports Multi-Week Plans & Grouping)
 app.post('/api/schedules', async (req, res) => {
   const { centerId, centerName, scheduledDate, amount } = req.body;
@@ -777,6 +803,46 @@ app.post('/api/schedules', async (req, res) => {
   };
 
   try {
+    // 0. Fetch custom holidays from Supabase to merge with fallback list
+    let dbHolidays = [];
+    try {
+      const { data: hData, error: hError } = await supabase
+        .from('holidays')
+        .select('holiday_date');
+      if (!hError && hData) {
+        dbHolidays = hData.map(h => h.holiday_date);
+      }
+    } catch (hErr) {
+      console.warn('Could not fetch custom holidays from DB, using fallback list:', hErr.message);
+    }
+
+    const isHoliday = (dateStr) => {
+      return GOVT_HOLIDAYS_2026.includes(dateStr) || dbHolidays.includes(dateStr);
+    };
+
+    const weekdaysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    const getAdjustedDate = (baseDate) => {
+      let tempDate = new Date(baseDate);
+      while (true) {
+        const year = tempDate.getFullYear();
+        const month = String(tempDate.getMonth() + 1).padStart(2, '0');
+        const day = String(tempDate.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        const dayOfWeek = tempDate.getDay(); // 0 = Sunday
+
+        if (dayOfWeek === 0 || isHoliday(dateStr)) {
+          // Shift 1 day before
+          tempDate.setDate(tempDate.getDate() - 1);
+        } else {
+          return {
+            dateStr,
+            dayName: weekdaysArr[dayOfWeek]
+          };
+        }
+      }
+    };
+
     // 1. Get all eligible loans for this center that are in 'CREDITED' state
     const { data: loansToActivate, error: loanFetchError } = await supabase
       .from('loans')
@@ -799,7 +865,6 @@ app.post('/api/schedules', async (req, res) => {
 
     // 3. Update Center Meeting Day based on the selected date
     const centerDate = new Date(scheduledDate);
-    const weekdaysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const centerMeetingDay = weekdaysArr[centerDate.getDay()];
 
     await supabase
@@ -836,17 +901,9 @@ app.post('/api/schedules', async (req, res) => {
         const baseDate = new Date(scheduledDate);
         baseDate.setDate(baseDate.getDate() + (i * 7));
 
-        let dayIndex = baseDate.getDay();
-        if (dayIndex === 0) {
-          baseDate.setDate(baseDate.getDate() + 1);
-          dayIndex = baseDate.getDay();
-        }
-
-        const year = baseDate.getFullYear();
-        const month = String(baseDate.getMonth() + 1).padStart(2, '0');
-        const day = String(baseDate.getDate()).padStart(2, '0');
-        const finalSchDate = `${year}-${month}-${day}`;
-        const scheduledDayName = weekdaysArr[dayIndex];
+        const adjusted = getAdjustedDate(baseDate);
+        const finalSchDate = adjusted.dateStr;
+        const scheduledDayName = adjusted.dayName;
 
         // Calculate member-specific installment for this week
         const currentAmount = memberPlan.amounts[i] * multiplier;

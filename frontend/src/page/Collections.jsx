@@ -31,8 +31,8 @@ export default function Collections() {
   const [loading, setLoading] = useState(true);
   const [performance, setPerformance] = useState([]);
 
-  const fetchPerformance = useCallback(async (date) => {
-    setLoading(true);
+  const fetchPerformance = useCallback(async (date, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/staff-daily-performance?date=${date}`);
       const data = await res.json();
@@ -40,13 +40,17 @@ export default function Collections() {
     } catch (err) {
       console.error('Performance fetch error:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchPerformance(monitorDate);
-  }, [monitorDate]);
+    const interval = setInterval(() => {
+      fetchPerformance(monitorDate, true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [monitorDate, fetchPerformance]);
 
   const handleAcceptStaff = async (sid) => {
     try {
@@ -100,12 +104,19 @@ export default function Collections() {
               <h1 className="text-lg md:text-2xl font-black text-white tracking-tight">Daily Collection Performance</h1>
             </div>
           </div>
-          <button
-            onClick={() => fetchPerformance(monitorDate)}
-            className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all hover:rotate-180 duration-300"
-          >
-            <FaSync />
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+              Live
+            </span>
+            <button
+              onClick={() => fetchPerformance(monitorDate)}
+              className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all hover:rotate-180 duration-300"
+              title="Refresh Data"
+            >
+              <FaSync />
+            </button>
+          </div>
         </header>
 
         {/* Date Picker + Summary Cards */}

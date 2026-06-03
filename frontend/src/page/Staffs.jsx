@@ -29,11 +29,15 @@ export default function Staffs() {
 
   useEffect(() => {
     fetchStaffPerformance();
+    const interval = setInterval(() => {
+      fetchStaffPerformance(true);
+    }, 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchStaffPerformance = async () => {
+  const fetchStaffPerformance = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await fetch(`${API_URL}/api/staff/performance`);
       const data = await res.json();
       if (res.ok) {
@@ -42,7 +46,7 @@ export default function Staffs() {
     } catch (err) {
       console.error('Staff fetch error:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -74,9 +78,15 @@ export default function Staffs() {
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Staff Management</h1>
             </div>
           </div>
-          <button onClick={fetchStaffPerformance} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
-            <FaHistory />
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+              Live
+            </span>
+            <button onClick={() => fetchStaffPerformance(false)} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all" title="Refresh Data">
+              <FaHistory />
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

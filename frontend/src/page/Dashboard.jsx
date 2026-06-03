@@ -31,6 +31,13 @@ export default function Dashboard() {
   useEffect(() => {
     fetchStats();
     fetchSanctionTracker();
+
+    const interval = setInterval(() => {
+      fetchStats();
+      fetchSanctionTracker();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchStats = async () => {
@@ -92,9 +99,15 @@ export default function Dashboard() {
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight truncate max-w-[150px] md:max-w-none">Hi, {userName || 'Manager'}</h1>
             </div>
           </div>
-          <button onClick={() => window.location.reload()} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
-            <FaHistory />
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+              Live
+            </span>
+            <button onClick={() => { fetchStats(); fetchSanctionTracker(); }} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all" title="Refresh Data">
+              <FaHistory />
+            </button>
+          </div>
         </header>
 
         {/* Stats */}

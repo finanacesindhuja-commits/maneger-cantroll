@@ -27,6 +27,8 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
     };
 
     fetchCounts();
+    const interval = setInterval(fetchCounts, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const menuItems = [

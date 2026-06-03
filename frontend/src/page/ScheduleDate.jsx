@@ -35,6 +35,13 @@ export default function ScheduleDate() {
   useEffect(() => {
     fetchCenters();
     fetchSchedules();
+
+    const interval = setInterval(() => {
+      fetchCenters();
+      fetchSchedules();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchCenters = async () => {
@@ -109,9 +116,15 @@ export default function ScheduleDate() {
               <h1 className="text-md md:text-2xl font-black text-white tracking-tight">Schedule Date</h1>
             </div>
           </div>
-          <button onClick={() => window.location.reload()} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all">
-            <FaHistory />
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+              Live
+            </span>
+            <button onClick={() => { fetchCenters(); fetchSchedules(); }} className="p-3 bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-indigo-400 transition-all" title="Refresh Data">
+              <FaHistory />
+            </button>
+          </div>
         </header>
 
         <div className="max-w-3xl">

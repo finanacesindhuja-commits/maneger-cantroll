@@ -10,6 +10,16 @@ const cache = new NodeCache({ stdTTL: 15 }); // Cache for 15 seconds
 
 const flushCache = () => cache.flushAll();
 
+const activePromises = new Map();
+async function coalesceRequest(key, fn) {
+  if (activePromises.has(key)) {
+    return activePromises.get(key);
+  }
+  const promise = fn().finally(() => activePromises.delete(key));
+  activePromises.set(key, promise);
+  return promise;
+}
+
 const cacheMiddleware = (duration = 15) => (req, res, next) => {
   if (req.method !== 'GET') return next();
   const key = req.originalUrl;
@@ -154,112 +164,74 @@ async function fetchAll(queryFn) {
 // Fetch stats for the dashboard and sidebar indicators
 app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
   try {
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    const today = new Date().toISOString().split('T')[0];
+    const data = await coalesceRequest('stats', async () => {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const today = new Date().toISOString().split('T')[0];
 
-    const [
-      creditedLoans,
-      pendingLoans,
-      pdData,
-      readyForPdLoansRaw,
-      psLoans,
-      crLoans,
-      schData,
-      missingCollections,
-      pendingCollectionCountObj
-    ] = await Promise.all([
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('amount_sanctioned')
-          .in('status', ['CREDITED', 'DISBURSED', 'COMPLETED'])
-          .gte('credited_at', startOfMonth.toISOString())
-      ),
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('amount_sanctioned')
-          .eq('disbursement_app_status', 'READY')
-          .neq('status', 'CREDITED')
-          .neq('status', 'COMPLETED')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('pd_verifications')
-          .select('member_id')
-          .or('status.ilike.APPROVED,pd_verified.eq.true')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('center_id, member_id')
-          .eq('status', 'READY FOR PD')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('center_id')
-          .eq('status', 'APPROVED')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('center_id')
-          .eq('status', 'CREDITED')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('collection_schedules')
-          .select('center_id')
-      ),
-      fetchAll(() => 
-        supabase
-          .from('collection_schedules')
-          .select('amount')
-          .neq('status', 'Received')
-          .lte('scheduled_date', today)
-      ),
-      supabase
-        .from('collection_schedules')
-        .select('*', { count: 'exact', head: true })
-        .eq('scheduled_date', today)
-        .neq('status', 'Received')
-    ]);
+      const [loansRes, pdRes, schedulesRes] = await Promise.all([
+        supabase.from('loans').select('center_id, member_id, status, amount_sanctioned, credited_at, disbursement_app_status'),
+        supabase.from('pd_verifications').select('member_id').or('status.ilike.APPROVED,pd_verified.eq.true'),
+        supabase.from('collection_schedules').select('center_id, amount, status, scheduled_date')
+      ]);
 
-    // Post-processing in memory
-    const totalCredited = (creditedLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
-    const pendingDisbursement = (pendingLoans || []).reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
+      if (loansRes.error) throw loansRes.error;
+      if (pdRes.error) throw pdRes.error;
+      if (schedulesRes.error) throw schedulesRes.error;
 
-    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
+      const allLoans = loansRes.data || [];
+      const pdData = pdRes.data || [];
+      const allSchedules = schedulesRes.data || [];
 
-    // Filter ready for PD loans in memory
-    const readyLoans = (readyForPdLoansRaw || []).filter(l => approvedMemberIds.has(l.member_id));
-    const readyForPdLoansCount = readyLoans.length;
-    const readyForPdCenterIds = readyLoans.map(l => l.center_id);
+      // Filter and compute in memory
+      const creditedLoans = allLoans.filter(l => 
+        ['CREDITED', 'DISBURSED', 'COMPLETED'].includes(l.status) && 
+        l.credited_at >= startOfMonth.toISOString()
+      );
+      const pendingLoans = allLoans.filter(l => 
+        l.disbursement_app_status === 'READY' && 
+        l.status !== 'CREDITED' && 
+        l.status !== 'COMPLETED'
+      );
+      const readyForPdLoansRaw = allLoans.filter(l => l.status === 'READY FOR PD');
+      const psLoans = allLoans.filter(l => l.status === 'APPROVED');
+      const crLoans = allLoans.filter(l => l.status === 'CREDITED');
 
-    const approvedMemberCount = (psLoans || []).length;
-    const memberCount = approvedMemberCount + readyForPdLoansCount;
+      const totalCredited = creditedLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
+      const pendingDisbursement = pendingLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned) || 0), 0);
 
-    const pendingSanctionCenters = [...new Set([...(psLoans?.map(l => l.center_id) || []), ...readyForPdCenterIds].filter(Boolean))].length;
+      const approvedMemberIds = new Set(pdData.map(pd => String(pd.member_id)).filter(Boolean));
 
-    const scheduledCenterIds = new Set(schData?.map(s => s.center_id).filter(Boolean));
-    const pendingScheduleCenters = [...new Set(crLoans?.map(l => l.center_id).filter(Boolean))]
-      .filter(id => !scheduledCenterIds.has(id)).length;
+      const readyLoans = readyForPdLoansRaw.filter(l => approvedMemberIds.has(String(l.member_id)));
+      const readyForPdLoansCount = readyLoans.length;
+      const readyForPdCenterIds = readyLoans.map(l => l.center_id);
 
-    const pendingCollectionCount = pendingCollectionCountObj.count || 0;
-    const missingAmount = (missingCollections || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      const approvedMemberCount = psLoans.length;
+      const memberCount = approvedMemberCount + readyForPdLoansCount;
 
-    res.json({
-      totalDisbursed: totalCredited,
-      pendingDisbursement: pendingDisbursement,
-      totalApprovedMembers: memberCount || 0,
-      pendingSanctionCount: pendingSanctionCenters,
-      pendingScheduleCount: pendingScheduleCenters,
-      pendingCollectionCount: pendingCollectionCount || 0,
-      missingAmount: missingAmount
+      const pendingSanctionCenters = [...new Set([...psLoans.map(l => l.center_id), ...readyForPdCenterIds].filter(Boolean))].length;
+
+      const scheduledCenterIds = new Set(allSchedules.map(s => s.center_id).filter(Boolean));
+      const pendingScheduleCenters = [...new Set(crLoans.map(l => l.center_id).filter(Boolean))]
+        .filter(id => !scheduledCenterIds.has(id)).length;
+
+      const pendingCollectionCount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date === today).length;
+      const missingAmount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date <= today)
+        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+
+      return {
+        totalDisbursed: totalCredited,
+        pendingDisbursement: pendingDisbursement,
+        totalApprovedMembers: memberCount || 0,
+        pendingSanctionCount: pendingSanctionCenters,
+        pendingScheduleCount: pendingScheduleCenters,
+        pendingCollectionCount: pendingCollectionCount || 0,
+        missingAmount: missingAmount
+      };
     });
+
+    res.json(data);
   } catch (error) {
     console.error('Stats error:', error);
     res.status(500).json({ error: error.message });
@@ -285,122 +257,127 @@ app.get('/api/profile/:staffId', async (req, res) => {
 // Fetch centers with active loan activity
 app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
   try {
-    // Fetch all required data concurrently for maximum performance
-    const [pdData, regularLoans, readyLoansRaw, staffData, allMembers, allCenters] = await Promise.all([
-      fetchAll(() => 
+    const data = await coalesceRequest('centers', async () => {
+      // Fetch all required data concurrently for maximum performance
+      const [pdData, regularLoans, readyLoansRaw, staffData, allMembers, allCenters] = await Promise.all([
+        fetchAll(() => 
+          supabase
+            .from('pd_verifications')
+            .select('member_id')
+            .or('status.ilike.APPROVED,pd_verified.eq.true')
+        ),
+        fetchAll(() => 
+          supabase
+            .from('loans')
+            .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
+            .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED', 'DISBURSED'])
+        ),
+        fetchAll(() => 
+          supabase
+            .from('loans')
+            .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
+            .eq('status', 'READY FOR PD')
+        ),
         supabase
-          .from('pd_verifications')
-          .select('member_id')
-          .or('status.ilike.APPROVED,pd_verified.eq.true')
-      ),
-      fetchAll(() => 
+          .from('staff')
+          .select('staff_id, branch'),
+        fetchAll(() => 
+          supabase
+            .from('members')
+            .select('id, center_id')
+        ),
         supabase
-          .from('loans')
-          .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
-          .in('status', ['APPROVED', 'SANCTIONED', 'CREDITED', 'DISBURSED'])
-      ),
-      fetchAll(() => 
-        supabase
-          .from('loans')
-          .select('center_id, status, amount_sanctioned, member_id, disbursement_app_status')
-          .eq('status', 'READY FOR PD')
-      ),
-      supabase
-        .from('staff')
-        .select('staff_id, branch'),
-      fetchAll(() => 
-        supabase
-          .from('members')
-          .select('id, center_id')
-      ),
-      supabase
-        .from('centers')
-        .select('*')
-    ]);
+          .from('centers')
+          .select('*')
+      ]);
 
-    if (staffData.error) throw staffData.error;
-    if (allCenters.error) throw allCenters.error;
+      if (staffData.error) throw staffData.error;
+      if (allCenters.error) throw allCenters.error;
 
-    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
-    const approvedMemberSet = new Set(approvedMemberIds);
+      const approvedMemberIds = (pdData || []).map(pd => String(pd.member_id)).filter(Boolean);
+      const approvedMemberSet = new Set(approvedMemberIds);
 
-    // Filter ready loans in memory
-    const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberSet.has(l.member_id));
+      // Filter ready loans in memory (using explicit String type casting)
+      const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberSet.has(String(l.member_id)));
 
-    const activeLoans = [...(regularLoans || []), ...readyLoans];
+      const activeLoans = [...(regularLoans || []), ...readyLoans];
 
-    if (!activeLoans || activeLoans.length === 0) {
-      return res.json([]);
-    }
+      if (!activeLoans || activeLoans.length === 0) {
+        return [];
+      }
 
-    const readyCenterIds = new Set(activeLoans.map(l => l.center_id).filter(Boolean));
+      const readyCenterIds = new Set(activeLoans.map(l => l.center_id).filter(Boolean));
 
-    // Filter centers in memory and sort by name
-    const centers = (allCenters.data || [])
-      .filter(c => readyCenterIds.has(c.id));
-    centers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      // Filter centers in memory and sort by name
+      const centers = (allCenters.data || [])
+        .filter(c => readyCenterIds.has(c.id));
+      centers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const branchMap = {};
-    if (staffData.data) {
-      staffData.data.forEach(s => {
-        if (s.staff_id) branchMap[s.staff_id] = s.branch;
+      const branchMap = {};
+      if (staffData.data) {
+        staffData.data.forEach(s => {
+          if (s.staff_id) branchMap[s.staff_id] = s.branch;
+        });
+      }
+
+      // 3. Attach stage info, branch, and stats to centers
+      const enrichedCenters = centers.map(c => {
+        const centerLoans = activeLoans.filter(l => l.center_id === c.id);
+        const centerMembers = (allMembers || []).filter(m => String(m.center_id) === String(c.id));
+        
+        // Group completion check: Are all members in this center PD approved?
+        // Normalize both IDs to strings for comparison
+        const approvedMembersInCenter = centerMembers.filter(m => 
+          approvedMemberIds.some(aid => String(aid) === String(m.id))
+        );
+        const isPDComplete = centerMembers.length > 0 && approvedMembersInCenter.length === centerMembers.length;
+
+        // Stage logic
+        const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');
+        const isApproved = centerLoans.some(l => l.status === 'APPROVED');
+        const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
+        
+        // Strict Check: ALL members must be CREDITED or DISBURSED, and at least one must be CREDITED (not yet scheduled)
+        const hasCredited = centerLoans.some(l => l.status === 'CREDITED');
+        const allProcessed = centerLoans.length > 0 && centerLoans.every(l => 
+          ['CREDITED', 'DISBURSED'].includes(l.status)
+        );
+        const isCredited = allProcessed && hasCredited;
+
+        const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
+
+        // Statistics: Only sum loans that are part of the current stage
+        // If we are ready to schedule, only sum the CREDITED loans
+        const relevantLoans = isCredited 
+          ? centerLoans.filter(l => l.status === 'CREDITED')
+          : centerLoans;
+        const totalAmount = relevantLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
+
+        return {
+          ...c,
+          branch: branchMap[c.staff_id] || 'N/A',
+          amount: totalAmount,
+          canSanction: isPDComplete && (isApproved || isReadyForPd),
+          canSchedule: isCredited,
+          isWaitingCredit: isSanctioned && !isCredited,
+          membersCount: centerLoans.length,
+          totalMembersInGroup: centerMembers.length,
+          approvedMembersCount: approvedMembersInCenter.length,
+          isPDComplete,
+          stage: stage
+        };
       });
-    }
 
-    // 3. Attach stage info, branch, and stats to centers
-    const enrichedCenters = centers.map(c => {
-      const centerLoans = activeLoans.filter(l => l.center_id === c.id);
-      const centerMembers = (allMembers || []).filter(m => String(m.center_id) === String(c.id));
-      
-      // Group completion check: Are all members in this center PD approved?
-      // Normalize both IDs to strings for comparison
-      const approvedMembersInCenter = centerMembers.filter(m => 
-        approvedMemberIds.some(aid => String(aid) === String(m.id))
-      );
-      const isPDComplete = centerMembers.length > 0 && approvedMembersInCenter.length === centerMembers.length;
-
-      // Stage logic
-      const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');
-      const isApproved = centerLoans.some(l => l.status === 'APPROVED');
-      const isSanctioned = centerLoans.some(l => l.status === 'SANCTIONED');
-      
-      // Strict Check: ALL members must be CREDITED or DISBURSED, and at least one must be CREDITED (not yet scheduled)
-      const hasCredited = centerLoans.some(l => l.status === 'CREDITED');
-      const allProcessed = centerLoans.length > 0 && centerLoans.every(l => 
-        ['CREDITED', 'DISBURSED'].includes(l.status)
-      );
-      const isCredited = allProcessed && hasCredited;
-
-      const stage = isReadyForPd ? 'PD' : isApproved ? 'APPROVAL' : isSanctioned ? 'DISBURSEMENT' : isCredited ? 'READY_TO_SCHEDULE' : 'PENDING';
-
-      // Statistics: Only sum loans that are part of the current stage
-      // If we are ready to schedule, only sum the CREDITED loans
-      const relevantLoans = isCredited 
-        ? centerLoans.filter(l => l.status === 'CREDITED')
-        : centerLoans;
-      const totalAmount = relevantLoans.reduce((sum, l) => sum + (Number(l.amount_sanctioned || 0)), 0);
-
-      return {
-        ...c,
-        branch: branchMap[c.staff_id] || 'N/A',
-        amount: totalAmount,
-        canSanction: isPDComplete && (isApproved || isReadyForPd),
-        canSchedule: isCredited,
-        isWaitingCredit: isSanctioned && !isCredited,
-        membersCount: centerLoans.length,
-        totalMembersInGroup: centerMembers.length,
-        approvedMembersCount: approvedMembersInCenter.length,
-        isPDComplete,
-        stage: stage
-      };
+      return enrichedCenters;
     });
 
-    res.json(enrichedCenters);
+    res.json(data);
   } catch (error) {
     console.error('Centers fetch error:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // New Endpoint: Track all sanctioned centers and their disbursement status
 app.get('/api/loans/track-disbursement', cacheMiddleware(10), async (req, res) => {
@@ -410,7 +387,7 @@ app.get('/api/loans/track-disbursement', cacheMiddleware(10), async (req, res) =
       .from('pd_verifications')
       .select('member_id')
       .or('status.ilike.APPROVED,pd_verified.eq.true');
-    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
+    const approvedMemberIds = new Set((pdData || []).map(pd => String(pd.member_id)).filter(Boolean));
 
     // 2. Fetch loans in 'APPROVED', 'READY FOR PD', 'SANCTIONED', or 'CREDITED' state
     const { data, error } = await supabase
@@ -423,7 +400,7 @@ app.get('/api/loans/track-disbursement', cacheMiddleware(10), async (req, res) =
     // Filter out 'READY FOR PD' loans that are not approved by PD verification
     const filteredLoans = (data || []).filter(l => {
       if (l.status === 'READY FOR PD') {
-        return approvedMemberIds.has(l.member_id);
+        return approvedMemberIds.has(String(l.member_id));
       }
       return true;
     });
@@ -562,10 +539,10 @@ app.get('/api/loans/sanction-queue', cacheMiddleware(10), async (req, res) => {
       )
     ]);
 
-    const approvedMemberIds = new Set((pdData || []).map(pd => pd.member_id).filter(Boolean));
+    const approvedMemberIds = new Set((pdData || []).map(pd => String(pd.member_id)).filter(Boolean));
 
     // Filter in-memory
-    const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberIds.has(l.member_id));
+    const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberIds.has(String(l.member_id)));
 
     const loans = [...(approvedLoans || []), ...readyLoans];
 
@@ -591,7 +568,7 @@ app.post('/api/centers/:id/sanction', async (req, res) => {
       .select('member_id')
       .eq('center_id', id)
       .or('status.ilike.APPROVED,pd_verified.eq.true');
-    const approvedMemberIds = (pdData || []).map(pd => pd.member_id).filter(Boolean);
+    const approvedMemberIds = (pdData || []).map(pd => Number(pd.member_id)).filter(Boolean);
 
     const { data: alreadyApprovedLoans, error: err1 } = await supabase
       .from('loans')
@@ -1095,7 +1072,7 @@ app.get('/api/schedules/:id/members', async (req, res) => {
 
     console.log(`DEBUG: Approved PD records count: ${approvedPDs.length}`);
 
-    const approvedMemberIds = approvedPDs.map(pd => pd.member_id);
+    const approvedMemberIds = approvedPDs.map(pd => Number(pd.member_id)).filter(Boolean);
 
     if (approvedMemberIds.length === 0) {
       console.log('DEBUG: NO APPROVED MEMBERS FOUND in pd_verifications');
@@ -1137,7 +1114,7 @@ app.get('/api/centers/:id/members', async (req, res) => {
       return status === 'APPROVED' || verified === 'true';
     });
 
-    const approvedMemberIds = approvedPDs.map(pd => pd.member_id);
+    const approvedMemberIds = approvedPDs.map(pd => Number(pd.member_id)).filter(Boolean);
     if (approvedMemberIds.length === 0) return res.json([]);
 
     // 3. Fetch members

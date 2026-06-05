@@ -21,7 +21,7 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
             loans: data.pendingSanctionCount,
             schedules: data.pendingScheduleCount,
             collections: data.pendingCollectionCount || 0,
-            pendingAmount: data.missingAmount || 0
+            pendingAmount: data.unpaidAmount || 0
           });
         }
       } catch (err) { console.error('Counts fetch error:', err); }

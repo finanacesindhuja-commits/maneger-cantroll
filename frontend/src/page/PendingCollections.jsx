@@ -62,9 +62,9 @@ export default function PendingCollections() {
     return new Date().toISOString().split('T')[0];
   }, []);
 
-  // Filter schedules that are unpaid (status !== Received) and due up to today
+  // Filter schedules that are unpaid (status !== Received and status !== Paid) and due up to today
   const pendingSchedules = useMemo(() => {
-    return schedules.filter(s => s.status !== 'Received' && s.scheduled_date <= todayStr);
+    return schedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= todayStr);
   }, [schedules, todayStr]);
 
   // Unique staff options for filter
@@ -321,15 +321,9 @@ export default function PendingCollections() {
                         ₹{(Number(schedule.amount) || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider ${
-                          schedule.status === 'Paid' 
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.05)]' 
-                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_12px_rgba(244,63,94,0.05)]'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            schedule.status === 'Paid' ? 'bg-amber-400' : 'bg-rose-400'
-                          }`}></span>
-                          {schedule.status}
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_12px_rgba(244,63,94,0.05)]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                          {schedule.status === 'Approved' ? 'Unpaid' : schedule.status}
                         </span>
                       </td>
                     </tr>

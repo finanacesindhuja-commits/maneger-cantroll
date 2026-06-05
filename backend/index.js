@@ -219,6 +219,8 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
       const pendingCollectionCount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date === today).length;
       const missingAmount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date <= today)
         .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      const unpaidAmount = allSchedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= today)
+        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
 
       return {
         totalDisbursed: totalCredited,
@@ -227,7 +229,8 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
         pendingSanctionCount: pendingSanctionCenters,
         pendingScheduleCount: pendingScheduleCenters,
         pendingCollectionCount: pendingCollectionCount || 0,
-        missingAmount: missingAmount
+        missingAmount: missingAmount,
+        unpaidAmount: unpaidAmount
       };
     });
 

@@ -62,46 +62,84 @@ export default function PendingCollections() {
     return new Date().toISOString().split('T')[0];
   }, []);
 
-  // Filter schedules that are unpaid (status !== Received and status !== Paid) and due up to today
+  // Filter raw schedules that are unpaid (status !== Received & status !== Paid) and due up to today
   const pendingSchedules = useMemo(() => {
     return schedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= todayStr);
   }, [schedules, todayStr]);
 
-  // Unique staff options for filter
+  // Group raw pending schedules by Member ID / Member Name
+  const groupedUnpaidMembers = useMemo(() => {
+    const groups = {};
+
+    pendingSchedules.forEach(s => {
+      const key = `${s.member_id}_${s.member_name}`;
+      if (!groups[key]) {
+        groups[key] = {
+          member_id: s.member_id,
+          member_name: s.member_name,
+          center_name: s.center_name,
+          center_id: s.center_id,
+          branch: s.branch,
+          staff_name: s.staff_name,
+          staff_id: s.staff_id,
+          total_amount: 0,
+          missed_installments: []
+        };
+      }
+      groups[key].total_amount += Number(s.amount) || 0;
+      groups[key].missed_installments.push({
+        id: s.id,
+        week_number: s.week_number,
+        scheduled_date: s.scheduled_date,
+        scheduled_day: s.scheduled_day,
+        amount: Number(s.amount) || 0,
+        status: s.status
+      });
+    });
+
+    // Sort missed week numbers ascending
+    Object.values(groups).forEach(g => {
+      g.missed_installments.sort((a, b) => a.week_number - b.week_number);
+    });
+
+    return Object.values(groups);
+  }, [pendingSchedules]);
+
+  // Unique staff options for filter (from grouped list)
   const staffOptions = useMemo(() => {
-    const staffSet = new Set(pendingSchedules.map(s => s.staff_name).filter(Boolean));
+    const staffSet = new Set(groupedUnpaidMembers.map(g => g.staff_name).filter(Boolean));
     return ['All', ...Array.from(staffSet)];
-  }, [pendingSchedules]);
+  }, [groupedUnpaidMembers]);
 
-  // Unique branch options for filter
+  // Unique branch options for filter (from grouped list)
   const branchOptions = useMemo(() => {
-    const branchSet = new Set(pendingSchedules.map(s => s.branch).filter(Boolean));
+    const branchSet = new Set(groupedUnpaidMembers.map(g => g.branch).filter(Boolean));
     return ['All', ...Array.from(branchSet)];
-  }, [pendingSchedules]);
+  }, [groupedUnpaidMembers]);
 
-  // Filtered list based on Search & Select filters
-  const filteredSchedules = useMemo(() => {
-    return pendingSchedules.filter(s => {
+  // Apply search & select filters to grouped list
+  const filteredGroupedMembers = useMemo(() => {
+    return groupedUnpaidMembers.filter(g => {
       const matchesSearch = 
-        (s.member_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.center_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.member_id || '').toString().includes(searchQuery);
+        (g.member_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (g.center_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (g.member_id || '').toString().includes(searchQuery);
 
-      const matchesStaff = selectedStaff === 'All' || s.staff_name === selectedStaff;
-      const matchesBranch = selectedBranch === 'All' || s.branch === selectedBranch;
+      const matchesStaff = selectedStaff === 'All' || g.staff_name === selectedStaff;
+      const matchesBranch = selectedBranch === 'All' || g.branch === selectedBranch;
 
       return matchesSearch && matchesStaff && matchesBranch;
     });
-  }, [pendingSchedules, searchQuery, selectedStaff, selectedBranch]);
+  }, [groupedUnpaidMembers, searchQuery, selectedStaff, selectedBranch]);
 
-  // Calculated statistics
+  // Calculated stats summaries
   const statsSummary = useMemo(() => {
-    const totalAmount = filteredSchedules.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-    const uniqueMembers = new Set(filteredSchedules.map(s => s.member_name)).size;
-    const totalBills = filteredSchedules.length;
+    const totalAmount = filteredGroupedMembers.reduce((sum, g) => sum + g.total_amount, 0);
+    const uniqueMembers = filteredGroupedMembers.length;
+    const totalBills = filteredGroupedMembers.reduce((sum, g) => sum + g.missed_installments.length, 0);
 
     return { totalAmount, uniqueMembers, totalBills };
-  }, [filteredSchedules]);
+  }, [filteredGroupedMembers]);
 
   return (
     <div className="min-h-screen bg-[#030303] text-slate-100 flex font-sans selection:bg-indigo-500/30 relative overflow-hidden">
@@ -253,78 +291,75 @@ export default function PendingCollections() {
                   <th className="px-6 py-4">Member</th>
                   <th className="px-6 py-4">Center & Branch</th>
                   <th className="px-6 py-4">Relationship Officer (RO)</th>
-                  <th className="px-6 py-4">Due Date</th>
-                  <th className="px-6 py-4">Installment</th>
-                  <th className="px-6 py-4 text-right">Status</th>
+                  <th className="px-6 py-4">Ethanual Katala (Missed Weeks & Dates)</th>
+                  <th className="px-6 py-4 text-right">Total Overdue</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04] text-xs">
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-20 text-center text-slate-500 font-bold">
+                    <td colSpan="5" className="px-6 py-20 text-center text-slate-500 font-bold">
                       <div className="flex flex-col items-center gap-3">
                         <RefreshCw className="animate-spin text-indigo-500 w-8 h-8" />
                         <span>Loading overdue bills...</span>
                       </div>
                     </td>
                   </tr>
-                ) : filteredSchedules.length === 0 ? (
+                ) : filteredGroupedMembers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-20 text-center text-slate-500 font-bold">
+                    <td colSpan="5" className="px-6 py-20 text-center text-slate-500 font-bold">
                       <div className="flex flex-col items-center gap-2">
                         <AlertCircle className="w-8 h-8 text-slate-600 mb-1" />
                         <span className="uppercase text-[10px] tracking-wider">No pending bills match your filters.</span>
                       </div>
                     </td>
                   </tr>
-                ) : filteredSchedules.map((schedule) => {
-                  const isOverdueToday = schedule.scheduled_date === todayStr;
+                ) : filteredGroupedMembers.map((group) => {
                   return (
-                    <tr key={schedule.id} className="group hover:bg-white/[0.02] transition-all duration-200">
+                    <tr key={`${group.member_id}_${group.member_name}`} className="group hover:bg-white/[0.02] transition-all duration-200">
                       <td className="px-6 py-4">
                         <div className="font-extrabold text-white text-sm tracking-tight uppercase group-hover:text-indigo-300 transition-colors">
-                          {schedule.member_name}
+                          {group.member_name}
                         </div>
                         <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-                          Member ID: #{schedule.member_id} • Wk {schedule.week_number}
+                          Member ID: #{group.member_id}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-300 uppercase">{schedule.center_name}</div>
+                        <div className="font-bold text-slate-300 uppercase">{group.center_name}</div>
                         <div className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-0.5">
                           <Building2 size={10} />
-                          {schedule.branch || 'N/A'}
+                          {group.branch || 'N/A'}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full bg-white/5 border border-white/5 flex items-center justify-center font-extrabold text-[8px] text-slate-400 uppercase">
-                            {(schedule.staff_name || 'N').split(' ').map(n => n[0]).slice(0, 2).join('')}
+                            {(group.staff_name || 'N').split(' ').map(n => n[0]).slice(0, 2).join('')}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-300 text-xs">{schedule.staff_name || 'Unknown Staff'}</div>
-                            <span className="text-[8px] text-slate-500 font-bold uppercase">ID: {schedule.staff_id}</span>
+                            <div className="font-bold text-slate-300 text-xs">{group.staff_name || 'Unknown Staff'}</div>
+                            <span className="text-[8px] text-slate-500 font-bold uppercase">ID: {group.staff_id}</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
-                          isOverdueToday 
-                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'
-                        }`}>
-                          <Calendar size={10} />
-                          {schedule.scheduled_date} ({schedule.scheduled_day || 'Due'})
-                        </span>
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider">
+                            {group.missed_installments.length} Weeks Overdue
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.missed_installments.map((inst, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                                <Calendar size={9} className="shrink-0 text-rose-500/70" />
+                                <span>Wk {inst.week_number} • {inst.scheduled_date} (₹{inst.amount.toLocaleString()})</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 font-black text-white text-sm">
-                        ₹{(Number(schedule.amount) || 0).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_12px_rgba(244,63,94,0.05)]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
-                          {schedule.status === 'Approved' ? 'Unpaid' : schedule.status}
-                        </span>
+                      <td className="px-6 py-4 font-black text-white text-sm text-right">
+                        ₹{group.total_amount.toLocaleString()}
                       </td>
                     </tr>
                   );

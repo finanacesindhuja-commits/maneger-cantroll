@@ -306,7 +306,7 @@ export default function PendingCollections() {
                   <th className="px-6 py-4">Member</th>
                   <th className="px-6 py-4">Center & Branch</th>
                   <th className="px-6 py-4">Relationship Officer (RO)</th>
-                  <th className="px-6 py-4">Ethanual Katala (Missed Weeks & Dates)</th>
+                  <th className="px-6 py-4"> Missed Weeks & Dates</th>
                   <th className="px-6 py-4 text-right">Total Overdue</th>
                 </tr>
               </thead>

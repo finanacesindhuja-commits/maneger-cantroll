@@ -9,7 +9,7 @@ import { API_URL } from '../config';
 export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [counts, setCounts] = useState({ loans: 0, schedules: 0, collections: 0 });
+  const [counts, setCounts] = useState({ loans: 0, schedules: 0, collections: 0, pendingAmount: 0 });
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -20,7 +20,8 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
           setCounts({
             loans: data.pendingSanctionCount,
             schedules: data.pendingScheduleCount,
-            collections: data.pendingCollectionCount || 0
+            collections: data.pendingCollectionCount || 0,
+            pendingAmount: data.missingAmount || 0
           });
         }
       } catch (err) { console.error('Counts fetch error:', err); }
@@ -36,6 +37,7 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
     { id: 'loans', label: 'Amount Approval', icon: <FaFileInvoiceDollar />, path: '/loans', badge: 'loans', badgeColor: 'bg-amber-500' },
     { id: 'schedule', label: 'Schedule Date', icon: <FaCalendarAlt />, path: '/schedule-date', badge: 'schedules', badgeColor: 'bg-indigo-500' },
     { id: 'collections', label: 'Collections', icon: <FaHistory />, path: '/collections', badge: 'collections', badgeColor: 'bg-emerald-500' },
+    { id: 'pending-collections', label: 'Pending Bills', icon: <FaFileInvoiceDollar />, path: '/pending-collections', badge: 'pendingAmount', badgeColor: 'bg-rose-500' },
     { id: 'staffs', label: 'Staffs', icon: <FaUsers />, path: '/staffs' },
   ];
 
@@ -80,8 +82,14 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
                 </div>
                 
                 {item.badge && counts[item.badge] > 0 && (
-                  <span className={`ml-auto ${item.badgeColor} text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-lg ring-4 ring-white/5`}>
-                    {counts[item.badge]}
+                  <span className={`ml-auto text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-lg border ${
+                    item.id === 'pending-collections' 
+                      ? 'bg-rose-500/15 text-rose-400 border-rose-500/20 shadow-[0_0_12px_rgba(244,63,94,0.05)]' 
+                      : `${item.badgeColor} text-slate-955 animate-pulse border-transparent`
+                  }`}>
+                    {item.id === 'pending-collections' 
+                      ? `₹${counts[item.badge].toLocaleString()}` 
+                      : counts[item.badge]}
                   </span>
                 )}
 

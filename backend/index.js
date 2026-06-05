@@ -221,6 +221,9 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
         .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
       const unpaidAmount = allSchedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= today)
         .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      const pendingReceiptCount = allSchedules.filter(s => s.status === 'Paid').length;
+      const pendingReceiptAmount = allSchedules.filter(s => s.status === 'Paid')
+        .reduce((sum, s) => sum + (Number(s.collected_amount) || Number(s.amount) || 0), 0);
 
       return {
         totalDisbursed: totalCredited,
@@ -230,9 +233,12 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
         pendingScheduleCount: pendingScheduleCenters,
         pendingCollectionCount: pendingCollectionCount || 0,
         missingAmount: missingAmount,
-        unpaidAmount: unpaidAmount
+        unpaidAmount: unpaidAmount,
+        pendingReceiptCount: pendingReceiptCount || 0,
+        pendingReceiptAmount: pendingReceiptAmount || 0
       };
     });
+
 
     res.json(data);
   } catch (error) {
@@ -993,7 +999,104 @@ app.put('/api/schedules/receive-bulk', async (req, res) => {
   }
 });
 
-// Bulk receive for all centers under a staff for a specific date
+// Fetch all schedules in 'Paid' status waiting for manager's receipt, grouped by staff and date
+app.get('/api/schedules/pending-receive', cacheMiddleware(5), async (req, res) => {
+  try {
+    const { data: schedules, error: schError } = await supabase
+      .from('collection_schedules')
+      .select('id, center_id, center_name, member_name, amount, collected_amount, status, scheduled_date')
+      .eq('status', 'Paid');
+
+    if (schError) throw schError;
+
+    if (!schedules || schedules.length === 0) {
+      return res.json([]);
+    }
+
+    // Fetch centers and staff to associate staff with schedules
+    const [centersRes, staffRes] = await Promise.all([
+      supabase.from('centers').select('id, staff_id'),
+      supabase.from('staff').select('staff_id, name, branch')
+    ]);
+
+    const centers = centersRes.data || [];
+    const staffList = staffRes.data || [];
+
+    const centerToStaffMap = {};
+    centers.forEach(c => {
+      if (c.id) centerToStaffMap[c.id] = c.staff_id;
+    });
+
+    const staffInfoMap = {};
+    staffList.forEach(st => {
+      if (st.staff_id) {
+        staffInfoMap[st.staff_id] = {
+          name: st.name,
+          branch: st.branch || 'N/A'
+        };
+      }
+    });
+
+    // Group by staff_id + scheduled_date
+    const groupings = {};
+
+    schedules.forEach(s => {
+      const staffId = centerToStaffMap[s.center_id] || 'unassigned';
+      const staffInfo = staffInfoMap[staffId] || { name: 'Unassigned Staff', branch: 'N/A' };
+      const dateKey = s.scheduled_date;
+      const groupKey = `${staffId}_${dateKey}`;
+
+      if (!groupings[groupKey]) {
+        groupings[groupKey] = {
+          key: groupKey,
+          staff_id: staffId,
+          staff_name: staffInfo.name,
+          branch: staffInfo.branch,
+          scheduled_date: dateKey,
+          total_collected: 0,
+          collections_count: 0,
+          centers: {}
+        };
+      }
+
+      const amt = Number(s.collected_amount) || Number(s.amount) || 0;
+      groupings[groupKey].total_collected += amt;
+      groupings[groupKey].collections_count += 1;
+
+      const cid = s.center_id;
+      if (!groupings[groupKey].centers[cid]) {
+        groupings[groupKey].centers[cid] = {
+          center_id: cid,
+          center_name: s.center_name || 'Unknown Center',
+          collected: 0,
+          members: []
+        };
+      }
+
+      groupings[groupKey].centers[cid].collected += amt;
+      groupings[groupKey].centers[cid].members.push({
+        schedule_id: s.id,
+        member_name: s.member_name,
+        amount: Number(s.amount) || 0,
+        collected_amount: amt,
+        status: s.status
+      });
+    });
+
+    // Convert to array
+    const result = Object.values(groupings).map(g => ({
+      ...g,
+      centers: Object.values(g.centers)
+    })).sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date));
+
+    res.json(result);
+  } catch (error) {
+    console.error('Pending receive fetch error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk receive for all centers under a staff for a specific date (transitions 'Paid' to 'Received')
 app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
   const { staffId, scheduledDate, managerId } = req.body;
   
@@ -1014,7 +1117,7 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
 
     const centerIds = centers.map(c => c.id);
 
-    // 2. Update schedules for those centers
+    // 2. Update all non-Received schedules for those centers on that date
     const { data, error } = await supabase
       .from('collection_schedules')
       .update({
@@ -1024,7 +1127,7 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
       })
       .in('center_id', centerIds)
       .eq('scheduled_date', scheduledDate)
-      .neq('status', 'Received')
+      .neq('status', 'Received') // Only skip already-Received ones
       .select();
 
     if (error) throw error;
@@ -1034,6 +1137,7 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 // Fetch members for a specific schedule's center (PD APPROVED ONLY)

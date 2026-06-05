@@ -207,7 +207,9 @@ export default function Collections() {
               {performance.map((staff) => {
                 const col = efficiencyColor(staff.efficiency);
                 const isExpanded = expandedStaff === staff.staff_id;
-                const allReceived = staff.collected >= staff.target;
+                // allReceived = true only when every member is 'Received'
+                const allMembers = staff.centers.flatMap(c => c.members);
+                const allReceived = allMembers.length > 0 && allMembers.every(m => m.status === 'Received');
 
                 return (
                   <div key={staff.staff_id}>
@@ -285,15 +287,17 @@ export default function Collections() {
 
                       {/* Action */}
                       <div className="hidden md:flex md:col-span-1 items-center justify-end gap-2">
-                        {!allReceived ? (
+                        {allReceived ? (
+                          <span className="text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border text-emerald-400 bg-emerald-500/10 border-emerald-500/20 flex items-center gap-1">
+                            <FaCheckCircle size={9} /> Received
+                          </span>
+                        ) : (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAcceptStaff(staff.staff_id); }}
                             className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1"
                           >
-                            <FaCheckCircle size={9} /> Accept
+                            <FaCheckCircle size={9} /> Receive
                           </button>
-                        ) : (
-                          <span className="text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border text-indigo-400 bg-indigo-500/10 border-indigo-500/20">Done</span>
                         )}
                         {isExpanded ? <FaChevronUp className="text-slate-500" size={12} /> : <FaChevronDown className="text-slate-500" size={12} />}
                       </div>
@@ -358,9 +362,11 @@ export default function Collections() {
                                         <div>
                                           <p className="text-xs font-bold text-slate-300 uppercase">{m.member_name}</p>
                                           <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
-                                            m.status === 'Paid' || m.status === 'Received'
+                                            m.status === 'Received'
                                               ? 'text-emerald-400 bg-emerald-500/10'
-                                              : 'text-red-400 bg-red-500/10'
+                                              : m.status === 'Paid'
+                                              ? 'text-amber-400 bg-amber-500/10'
+                                              : 'text-slate-500 bg-white/5'
                                           }`}>{m.status}</span>
                                         </div>
                                         <div className="text-right">

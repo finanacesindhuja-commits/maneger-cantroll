@@ -7,6 +7,17 @@ import {
 import { API_URL } from '../config';
 import Sidebar from '../components/Sidebar';
 
+const calculateDaysOverdue = (dueDateStr) => {
+  const due = new Date(dueDateStr);
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffTime = today - due;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
+};
+
+// Group raw pending schedules by Member ID / Member Name
 export default function PendingCollections() {
   const navigate = useNavigate();
   const role = localStorage.getItem('role');
@@ -86,6 +97,7 @@ export default function PendingCollections() {
           missed_installments: []
         };
       }
+      const daysOverdue = calculateDaysOverdue(s.scheduled_date);
       groups[key].total_amount += Number(s.amount) || 0;
       groups[key].missed_installments.push({
         id: s.id,
@@ -93,13 +105,16 @@ export default function PendingCollections() {
         scheduled_date: s.scheduled_date,
         scheduled_day: s.scheduled_day,
         amount: Number(s.amount) || 0,
-        status: s.status
+        status: s.status,
+        days_overdue: daysOverdue
       });
     });
 
     // Sort missed week numbers ascending
     Object.values(groups).forEach(g => {
       g.missed_installments.sort((a, b) => a.week_number - b.week_number);
+      // Find maximum days overdue (oldest unpaid)
+      g.max_days_overdue = Math.max(...g.missed_installments.map(i => i.days_overdue), 0);
     });
 
     return Object.values(groups);
@@ -324,6 +339,15 @@ export default function PendingCollections() {
                         <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
                           Member ID: #{group.member_id}
                         </div>
+                        {group.max_days_overdue > 0 && (
+                          <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                            group.max_days_overdue > 14
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          }`}>
+                            Overdue {group.max_days_overdue} Days
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-bold text-slate-300 uppercase">{group.center_name}</div>
@@ -350,9 +374,9 @@ export default function PendingCollections() {
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {group.missed_installments.map((inst, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                              <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-400">
                                 <Calendar size={9} className="shrink-0 text-rose-500/70" />
-                                <span>Wk {inst.week_number} • {inst.scheduled_date} (₹{inst.amount.toLocaleString()})</span>
+                                <span>Wk {inst.week_number} • {inst.scheduled_date} (₹{inst.amount.toLocaleString()}) • {inst.days_overdue} Days Unpaid</span>
                               </span>
                             ))}
                           </div>

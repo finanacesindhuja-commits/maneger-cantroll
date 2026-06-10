@@ -100,7 +100,8 @@ export default function PendingCollections() {
       const daysOverdue = calculateDaysOverdue(s.scheduled_date);
       const amt = Number(s.amount) || 0;
       const coll = Number(s.collected_amount) || 0;
-      const pendingAmt = Math.max(0, amt - coll);
+      const penalty = Number(s.penalty) || 0;
+      const pendingAmt = Math.max(0, amt + penalty - coll);
 
       groups[key].total_amount += pendingAmt;
       groups[key].missed_installments.push({
@@ -109,6 +110,7 @@ export default function PendingCollections() {
         scheduled_date: s.scheduled_date,
         scheduled_day: s.scheduled_day,
         amount: amt,
+        penalty: penalty,
         pending_amount: pendingAmt,
         status: s.status,
         days_overdue: daysOverdue
@@ -381,7 +383,7 @@ export default function PendingCollections() {
                             {group.missed_installments.map((inst, idx) => (
                               <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-400">
                                 <Calendar size={9} className="shrink-0 text-rose-500/70" />
-                                <span>Wk {inst.week_number} • {inst.scheduled_date} (Pending: ₹{inst.pending_amount.toLocaleString()}) • {inst.days_overdue} Days Unpaid</span>
+                                <span>Wk {inst.week_number} • {inst.scheduled_date} • EMI ₹{inst.amount.toLocaleString()}{inst.penalty > 0 ? ` + Late Fee ₹${inst.penalty.toLocaleString()}` : ''} = Pending ₹{inst.pending_amount.toLocaleString()} • {inst.days_overdue} Days</span>
                               </span>
                             ))}
                           </div>

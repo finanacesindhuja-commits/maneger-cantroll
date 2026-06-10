@@ -161,6 +161,16 @@ async function fetchAll(queryFn) {
   return allData;
 }
 
+// Utility: Calculate dynamic ₹20/day late penalty (same logic as Collection Control)
+const getPenalty = (scheduledDate, scheduleStatus) => {
+  const cleanStatus = scheduleStatus ? String(scheduleStatus).trim() : '';
+  if (cleanStatus === 'Paid' || cleanStatus === 'Verified' || cleanStatus === 'Received') return 0;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const diffTime = new Date(todayStr) - new Date(scheduledDate);
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays * 20 : 0;
+};
+
 // Fetch stats for the dashboard and sidebar indicators
 app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
   try {
@@ -173,7 +183,7 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
       const [loansRes, pdRes, schedulesRes] = await Promise.all([
         supabase.from('loans').select('center_id, member_id, status, amount_sanctioned, credited_at, disbursement_app_status'),
         supabase.from('pd_verifications').select('member_id').or('status.ilike.APPROVED,pd_verified.eq.true'),
-        supabase.from('collection_schedules').select('center_id, amount, status, scheduled_date')
+        supabase.from('collection_schedules').select('center_id, amount, collected_amount, status, scheduled_date')
       ]);
 
       if (loansRes.error) throw loansRes.error;
@@ -218,9 +228,17 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
 
       const pendingCollectionCount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date === today).length;
       const missingAmount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date <= today)
-        .reduce((sum, s) => sum + Math.max(0, (Number(s.amount) || 0) - (Number(s.collected_amount) || 0)), 0);
+        .reduce((sum, s) => {
+          const penalty = getPenalty(s.scheduled_date, s.status);
+          const due = Math.max(0, (Number(s.amount) || 0) + penalty - (Number(s.collected_amount) || 0));
+          return sum + due;
+        }, 0);
       const unpaidAmount = allSchedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= today)
-        .reduce((sum, s) => sum + Math.max(0, (Number(s.amount) || 0) - (Number(s.collected_amount) || 0)), 0);
+        .reduce((sum, s) => {
+          const penalty = getPenalty(s.scheduled_date, s.status);
+          const due = Math.max(0, (Number(s.amount) || 0) + penalty - (Number(s.collected_amount) || 0));
+          return sum + due;
+        }, 0);
       const pendingReceiptCount = allSchedules.filter(s => s.status === 'Paid').length;
       const pendingReceiptAmount = allSchedules.filter(s => s.status === 'Paid')
         .reduce((sum, s) => sum + (Number(s.collected_amount) || Number(s.amount) || 0), 0);
@@ -716,7 +734,8 @@ app.get('/api/schedules', cacheMiddleware(10), async (req, res) => {
         ...s,
         staff_id: staffId ? String(staffId).trim() : 'N/A',
         staff_name: info?.name || 'Unknown',
-        branch: info?.branch || 'N/A'
+        branch: info?.branch || 'N/A',
+        penalty: getPenalty(s.scheduled_date, s.status)
       };
     });
 

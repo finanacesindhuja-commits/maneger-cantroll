@@ -218,9 +218,9 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
 
       const pendingCollectionCount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date === today).length;
       const missingAmount = allSchedules.filter(s => s.status !== 'Received' && s.scheduled_date <= today)
-        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        .reduce((sum, s) => sum + Math.max(0, (Number(s.amount) || 0) - (Number(s.collected_amount) || 0)), 0);
       const unpaidAmount = allSchedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= today)
-        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        .reduce((sum, s) => sum + Math.max(0, (Number(s.amount) || 0) - (Number(s.collected_amount) || 0)), 0);
       const pendingReceiptCount = allSchedules.filter(s => s.status === 'Paid').length;
       const pendingReceiptAmount = allSchedules.filter(s => s.status === 'Paid')
         .reduce((sum, s) => sum + (Number(s.collected_amount) || Number(s.amount) || 0), 0);

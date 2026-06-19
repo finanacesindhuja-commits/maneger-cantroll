@@ -196,7 +196,7 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
 
       // Filter and compute in memory
       const creditedLoans = allLoans.filter(l => 
-        ['CREDITED', 'DISBURSED', 'COMPLETED'].includes(l.status) && 
+        ['CREDITED', 'DISBURSED', 'COMPLETED', 'ARCHIVED'].includes(l.status) && 
         l.credited_at >= startOfMonth.toISOString()
       );
       const pendingLoans = allLoans.filter(l => 

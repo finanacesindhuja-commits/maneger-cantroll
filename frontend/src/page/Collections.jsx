@@ -207,9 +207,9 @@ export default function Collections() {
               {performance.map((staff) => {
                 const col = efficiencyColor(staff.efficiency);
                 const isExpanded = expandedStaff === staff.staff_id;
-                // allReceived = true only when every member is 'Received'
                 const allMembers = staff.centers.flatMap(c => c.members);
-                const allReceived = allMembers.length > 0 && allMembers.every(m => m.status === 'Received');
+                const hasPaid = allMembers.some(m => m.status === 'Paid');
+                const hasReceived = allMembers.some(m => m.status === 'Received');
 
                 return (
                   <div key={staff.staff_id}>
@@ -287,17 +287,21 @@ export default function Collections() {
 
                       {/* Action */}
                       <div className="hidden md:flex md:col-span-1 items-center justify-end gap-2">
-                        {allReceived ? (
-                          <span className="text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border text-emerald-400 bg-emerald-500/10 border-emerald-500/20 flex items-center gap-1">
-                            <FaCheckCircle size={9} /> Received
-                          </span>
-                        ) : (
+                        {hasPaid ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAcceptStaff(staff.staff_id); }}
                             className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1"
                           >
                             <FaCheckCircle size={9} /> Receive
                           </button>
+                        ) : hasReceived ? (
+                          <span className="text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border text-emerald-400 bg-emerald-500/10 border-emerald-500/20 flex items-center gap-1">
+                            <FaCheckCircle size={9} /> Received
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-black uppercase px-2 py-1 rounded text-slate-500 bg-white/5 border border-white/10">
+                            Waiting
+                          </span>
                         )}
                         {isExpanded ? <FaChevronUp className="text-slate-500" size={12} /> : <FaChevronDown className="text-slate-500" size={12} />}
                       </div>

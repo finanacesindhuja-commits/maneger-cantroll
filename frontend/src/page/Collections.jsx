@@ -354,31 +354,52 @@ export default function Collections() {
                                   </div>
                                 </div>
 
-                                {/* Member Breakdown */}
-                                {isCenterExpanded && (
-                                  <div className="border-t border-white/5 divide-y divide-white/5">
-                                    {center.members.map((m, idx) => (
-                                      <div key={idx} className="flex justify-between items-center px-4 py-2.5">
-                                        <div>
-                                          <p className="text-xs font-bold text-slate-300 uppercase">{m.member_name}</p>
-                                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
-                                            m.status === 'Received'
-                                              ? 'text-emerald-400 bg-emerald-500/10'
-                                              : m.status === 'Paid'
-                                              ? 'text-amber-400 bg-amber-500/10'
-                                              : 'text-slate-500 bg-white/5'
-                                          }`}>{m.status}</span>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-xs font-black text-white">₹{m.amount.toLocaleString()}</p>
-                                          {m.collected > 0 && (
-                                            <p className="text-[9px] text-emerald-400 font-bold">✓ ₹{m.collected.toLocaleString()}</p>
-                                          )}
-                                        </div>
+                                {/* Member Breakdown — only collected bills (Paid / Received) */}
+                                {isCenterExpanded && (() => {
+                                  const collectedMembers = center.members.filter(
+                                    m => m.status === 'Paid'
+                                  );
+                                  return (
+                                    <div className="border-t border-white/5">
+                                      {/* Section label */}
+                                      <div className="px-4 py-2 bg-white/[0.02] flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block animate-pulse" />
+                                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">
+                                          Collection Control Bills
+                                        </span>
+                                        <span className="ml-auto text-[9px] font-black text-slate-500 bg-white/5 px-2 py-0.5 rounded">
+                                          {collectedMembers.length} / {center.members.length} bills
+                                        </span>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
+
+                                      {collectedMembers.length === 0 ? (
+                                        <div className="flex flex-col items-center py-5 gap-1 opacity-60">
+                                          <span className="text-2xl">📋</span>
+                                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                            No bills collected yet
+                                          </p>
+                                        </div>
+                                      ) : (
+                                        <div className="divide-y divide-white/5">
+                                          {collectedMembers.map((m, idx) => (
+                                            <div key={idx} className="flex justify-between items-center px-4 py-2.5">
+                                              <div>
+                                                <p className="text-xs font-bold text-slate-300 uppercase">{m.member_name}</p>
+                                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-amber-400 bg-amber-500/10">{m.status}</span>
+                                              </div>
+                                              <div className="text-right">
+                                                <p className="text-xs font-black text-white">₹{m.amount.toLocaleString()}</p>
+                                                {m.collected > 0 && (
+                                                  <p className="text-[9px] text-emerald-400 font-bold">✓ ₹{m.collected.toLocaleString()}</p>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             );
                           })}

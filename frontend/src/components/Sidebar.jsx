@@ -48,7 +48,7 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
 
   return (
     <aside className={`w-72 bg-[#050508]/85 backdrop-blur-2xl border-r border-white/[0.05] flex flex-col fixed h-full z-[70] transition-transform duration-300 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-      <div className="p-8">
+      <div className="p-8 flex-1 overflow-y-auto">
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/10">

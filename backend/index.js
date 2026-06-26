@@ -164,7 +164,7 @@ async function fetchAll(queryFn) {
 // Utility: Calculate dynamic ₹20/day late penalty (same logic as Collection Control)
 const getPenalty = (scheduledDate, scheduleStatus) => {
   const cleanStatus = scheduleStatus ? String(scheduleStatus).trim() : '';
-  if (cleanStatus === 'Paid' || cleanStatus === 'Verified' || cleanStatus === 'Received') return 0;
+  if (cleanStatus === 'Paid' || cleanStatus === 'Verified' || cleanStatus === 'Received' || cleanStatus === 'Partial') return 0;
   const todayStr = new Date().toISOString().split('T')[0];
   const diffTime = new Date(todayStr) - new Date(scheduledDate);
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));

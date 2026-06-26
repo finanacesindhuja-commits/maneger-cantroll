@@ -361,7 +361,7 @@ export default function Collections() {
                                 {/* Member Breakdown — only collected bills (Paid / Received) */}
                                 {isCenterExpanded && (() => {
                                   const collectedMembers = center.members.filter(
-                                    m => m.status === 'Paid'
+                                    m => m.status === 'Paid' || m.status === 'Received'
                                   );
                                   const pendingMembers = center.members.filter(
                                     m => m.status === 'Approved' || m.status === 'Pending'

@@ -1008,7 +1008,7 @@ app.put('/api/schedules/receive-bulk', async (req, res) => {
       })
       .eq('center_id', centerId)
       .eq('scheduled_date', scheduledDate)
-      .neq('status', 'Received')
+      .eq('status', 'Paid')
       .select();
 
     if (error) throw error;
@@ -1146,7 +1146,7 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
       })
       .in('center_id', centerIds)
       .eq('scheduled_date', scheduledDate)
-      .neq('status', 'Received') // Only skip already-Received ones
+      .eq('status', 'Paid') // Only receive collected items
       .select();
 
     if (error) throw error;

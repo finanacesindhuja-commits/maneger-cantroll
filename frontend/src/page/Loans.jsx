@@ -35,6 +35,7 @@ export default function Loans() {
 
   const amountOptions = [
     { value: 10000, label: '₹10,000 (12-Week Plan)' },
+    { value: 11000, label: '₹11,000 (15-Week Plan)' },
     { value: 12000, label: '₹12,000 (16-Week Plan)' },
     { value: 13000, label: '₹13,000 (18-Week Plan)' },
     { value: 15000, label: '₹15,000' },

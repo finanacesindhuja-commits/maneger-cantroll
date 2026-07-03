@@ -324,10 +324,9 @@ app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
       const approvedMemberIds = (pdData || []).map(pd => String(pd.member_id)).filter(Boolean);
       const approvedMemberSet = new Set(approvedMemberIds);
 
-      // Filter ready loans in memory (using explicit String type casting)
-      const readyLoans = (readyLoansRaw || []).filter(l => approvedMemberSet.has(String(l.member_id)));
-
-      const activeLoans = [...(regularLoans || []), ...readyLoans];
+      // We no longer strictly filter activeLoans to only PD-approved ones.
+      // We want to fetch all centers that have any active loan (even pending PD).
+      const activeLoans = [...(regularLoans || []), ...(readyLoansRaw || [])];
 
       if (!activeLoans || activeLoans.length === 0) {
         return [];
@@ -352,12 +351,12 @@ app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
         const centerLoans = activeLoans.filter(l => l.center_id === c.id);
         const centerMembers = (allMembers || []).filter(m => String(m.center_id) === String(c.id));
         
-        // Group completion check: Are all members in this center PD approved?
-        // Normalize both IDs to strings for comparison
-        const approvedMembersInCenter = centerMembers.filter(m => 
-          approvedMemberIds.some(aid => String(aid) === String(m.id))
-        );
-        const isPDComplete = centerMembers.length > 0 && approvedMembersInCenter.length === centerMembers.length;
+        // Group completion check: Are all members who applied for loans in this center PD approved?
+        const allCenterLoans = [...(regularLoans || []), ...(readyLoansRaw || [])]
+          .filter(l => l.center_id === c.id);
+        const loansMembers = [...new Set(allCenterLoans.map(l => String(l.member_id)))];
+        const approvedLoansMembers = loansMembers.filter(mId => approvedMemberSet.has(mId));
+        const isPDComplete = loansMembers.length > 0 && approvedLoansMembers.length === loansMembers.length;
 
         // Stage logic
         const isReadyForPd = centerLoans.some(l => l.status === 'READY FOR PD');

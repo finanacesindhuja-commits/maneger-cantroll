@@ -332,11 +332,11 @@ app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
         return [];
       }
 
-      const readyCenterIds = new Set(activeLoans.map(l => l.center_id).filter(Boolean));
+      const readyCenterIds = new Set(activeLoans.map(l => String(l.center_id)).filter(Boolean));
 
       // Filter centers in memory and sort by name
       const centers = (allCenters.data || [])
-        .filter(c => readyCenterIds.has(c.id));
+        .filter(c => readyCenterIds.has(String(c.id)));
       centers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
       const branchMap = {};
@@ -348,12 +348,12 @@ app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
 
       // 3. Attach stage info, branch, and stats to centers
       const enrichedCenters = centers.map(c => {
-        const centerLoans = activeLoans.filter(l => l.center_id === c.id);
+        const centerLoans = activeLoans.filter(l => String(l.center_id) === String(c.id));
         const centerMembers = (allMembers || []).filter(m => String(m.center_id) === String(c.id));
         
         // Group completion check: Are all members who applied for loans in this center PD approved?
         const allCenterLoans = [...(regularLoans || []), ...(readyLoansRaw || [])]
-          .filter(l => l.center_id === c.id);
+          .filter(l => String(l.center_id) === String(c.id));
         const loansMembers = [...new Set(allCenterLoans.map(l => String(l.member_id)))];
         const approvedLoansMembers = loansMembers.filter(mId => approvedMemberSet.has(mId));
         const isPDComplete = loansMembers.length > 0 && approvedLoansMembers.length === loansMembers.length;
@@ -388,7 +388,7 @@ app.get('/api/centers', cacheMiddleware(10), async (req, res) => {
           isWaitingCredit: isSanctioned && !isCredited,
           membersCount: centerLoans.length,
           totalMembersInGroup: centerMembers.length,
-          approvedMembersCount: approvedMembersInCenter.length,
+          approvedMembersCount: approvedLoansMembers.length,
           isPDComplete,
           stage: stage
         };

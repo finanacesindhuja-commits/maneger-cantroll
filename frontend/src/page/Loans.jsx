@@ -219,7 +219,7 @@ export default function Loans() {
               </div>
               <div>
                 <h2 className="text-xl font-black text-white tracking-tight uppercase">Amount Approval</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">PD Approved Centers மட்டும் காட்டப்படும்</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">PD Approved Centers</p>
               </div>
             </div>
 
@@ -234,7 +234,7 @@ export default function Loans() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                      Center Select பண்ணுங்க
+                      Center Select 
                     </label>
                     <span className="text-[9px] text-amber-500 font-bold uppercase">
                       {sanctionCenters.length} Available
@@ -246,7 +246,7 @@ export default function Loans() {
                     onChange={(e) => setSelectedCenter(e.target.value)} 
                     className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none"
                   >
-                    <option value="">-- Center Select பண்ணுங்க --</option>
+                    <option value="">-- Center Select --</option>
                     {sanctionCenters.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name} ({c.branch}) — {c.membersCount} Members
@@ -258,12 +258,12 @@ export default function Loans() {
                   {sanctionCenters.length === 0 && !loading && (
                     <div className="mt-3 bg-[#0a0f1c] border border-white/5 rounded-2xl p-5 space-y-3">
                       <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest text-center animate-pulse">
-                        ⏳ PD Approved Centers இல்லை
+                        ⏳ PD Approved Centers
                       </p>
                       {pdCenters.length > 0 && (
                         <div className="space-y-2">
                           <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest text-center">
-                            இந்த {pdCenters.length} Centers PD-ல் இருக்கு:
+                            {pdCenters.length} Centers PD-:
                           </p>
                           {pdCenters.map(c => (
                             <div key={c.id} className="flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-xl px-4 py-2">
@@ -280,7 +280,7 @@ export default function Loans() {
                       )}
                       {allCenters === 0 && (
                         <p className="text-[9px] text-slate-700 font-bold uppercase tracking-widest text-center italic">
-                          எந்த active center-உம் இல்லை
+                          No active centers available
                         </p>
                       )}
                     </div>
@@ -307,7 +307,7 @@ export default function Loans() {
                           </div>
                         ))}
                         {formMembers.length === 0 && (
-                          <p className="col-span-2 text-center text-[10px] text-slate-600 font-bold uppercase py-2">Members இல்லை</p>
+                          <p className="col-span-2 text-center text-[10px] text-slate-600 font-bold uppercase py-2">No members available</p>
                         )}
                       </div>
                     )}
@@ -316,13 +316,13 @@ export default function Loans() {
 
                 {/* Amount Select */}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Amount Select பண்ணுங்க</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Amount Select</label>
                   <select 
                     value={selectedAmount} 
                     onChange={(e) => setSelectedAmount(e.target.value)} 
                     className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none"
                   >
-                    <option value="">-- Amount Select பண்ணுங்க --</option>
+                    <option value="">-- Amount Select--</option>
                     {amountOptions.map(amt => (
                       <option key={amt.value} value={amt.value}>{amt.label}</option>
                     ))}

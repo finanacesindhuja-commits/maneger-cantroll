@@ -236,8 +236,8 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
         }, 0);
       const unpaidAmount = allSchedules.filter(s => s.status !== 'Received' && s.status !== 'Paid' && s.scheduled_date <= today)
         .reduce((sum, s) => {
-          const penalty = getPenalty(s.scheduled_date, s.status);
-          const due = Math.max(0, (Number(s.amount) || 0) + penalty - (Number(s.collected_amount) || 0));
+          // Show only actual EMI due (no penalty) for sidebar display
+          const due = Math.max(0, (Number(s.amount) || 0) - (Number(s.collected_amount) || 0));
           return sum + due;
         }, 0);
       const pendingReceiptCount = allSchedules.filter(s => s.status === 'Paid').length;

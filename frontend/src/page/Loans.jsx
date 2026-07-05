@@ -64,10 +64,10 @@ export default function Loans() {
         setCenters(Array.isArray(data) ? data : []);
         setLastRefresh(new Date());
       } else {
-        setError('Centers data வரவில்லை: ' + (data.error || 'Server error'));
+        setError('Failed to load centers: ' + (data.error || 'Server error'));
       }
     } catch (err) {
-      setError('Server-ஐ connect பண்ண முடியவில்லை. Backend running-ஆ check பண்ணுங்க.');
+      setError('Unable to connect to server. Please check if backend is running.');
       console.error('Centers error:', err);
     } finally {
       setLoading(false);
@@ -90,7 +90,7 @@ export default function Loans() {
 
   const handleSanctionCenter = async (e) => {
     e.preventDefault();
-    if (!selectedCenter || !selectedAmount) return alert('Center மற்றும் Amount select பண்ணுங்க');
+    if (!selectedCenter || !selectedAmount) return alert('Please select a Center and Amount.');
     const selectedPlan = amountOptions.find(p => p.value === Number(selectedAmount));
     setActionLoading(true);
     try {
@@ -105,7 +105,7 @@ export default function Loans() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccessMsg(`✅ ₹${Number(selectedAmount).toLocaleString('en-IN')} தொகை வெற்றிகரமாக Approve செய்யப்பட்டது!`);
+        setSuccessMsg(`✅ ₹${Number(selectedAmount).toLocaleString('en-IN')} approved successfully!`);
         setTimeout(() => setSuccessMsg(''), 5000);
         setSelectedCenter('');
         setSelectedAmount('');
@@ -116,7 +116,7 @@ export default function Loans() {
       }
     } catch (err) {
       console.error('Sanction error:', err);
-      alert('Server error. மீண்டும் try பண்ணுங்க.');
+      alert('Server error. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -219,7 +219,7 @@ export default function Loans() {
               </div>
               <div>
                 <h2 className="text-xl font-black text-white tracking-tight uppercase">Amount Approval</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">PD Approved Centers</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Only PD Approved Centers are shown</p>
               </div>
             </div>
 
@@ -258,12 +258,12 @@ export default function Loans() {
                   {sanctionCenters.length === 0 && !loading && (
                     <div className="mt-3 bg-[#0a0f1c] border border-white/5 rounded-2xl p-5 space-y-3">
                       <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest text-center animate-pulse">
-                        ⏳ PD Approved Centers
+                        ⏳ No PD Approved Centers Available
                       </p>
                       {pdCenters.length > 0 && (
                         <div className="space-y-2">
                           <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest text-center">
-                            {pdCenters.length} Centers PD-:
+                            {pdCenters.length} Centers currently in PD Verification:
                           </p>
                           {pdCenters.map(c => (
                             <div key={c.id} className="flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-xl px-4 py-2">

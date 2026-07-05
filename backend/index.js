@@ -204,7 +204,7 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
         l.status !== 'CREDITED' && 
         l.status !== 'COMPLETED'
       );
-      const readyForPdLoansRaw = allLoans.filter(l => l.status === 'READY FOR PD');
+      const readyForPdLoansRaw = allLoans.filter(l => l.status === 'READY FOR PD' || l.status === 'VERIFIED');
       const psLoans = allLoans.filter(l => l.status === 'APPROVED');
       const crLoans = allLoans.filter(l => l.status === 'CREDITED');
 
@@ -213,7 +213,8 @@ app.get('/api/stats', cacheMiddleware(10), async (req, res) => {
 
       const approvedMemberIds = new Set(pdData.map(pd => String(pd.member_id)).filter(Boolean));
 
-      const readyLoans = readyForPdLoansRaw.filter(l => approvedMemberIds.has(String(l.member_id)));
+      // Include both READY FOR PD and VERIFIED loans as ready for sanction
+      const readyLoans = readyForPdLoansRaw.filter(l => approvedMemberIds.has(String(l.member_id)) || l.status === 'VERIFIED');
       const readyForPdLoansCount = readyLoans.length;
       const readyForPdCenterIds = readyLoans.map(l => l.center_id);
 

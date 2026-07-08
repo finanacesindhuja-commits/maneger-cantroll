@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fa';
 import { API_URL } from '../config';
 
-export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
+export default function Sidebar({ isSidebarOpen, setIsSidebarOpen, refreshKey }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState({ 
@@ -15,27 +15,32 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/stats`);
-        const data = await res.json();
-        if (res.ok) {
-          setCounts({
-            loans: data.pendingSanctionCount || 0,
-            schedules: data.pendingScheduleCount || 0,
-            collections: data.pendingCollectionCount || 0,
-            pendingAmount: data.unpaidAmount || 0,
-            pendingReceipts: data.pendingReceiptCount || 0
-          });
-        }
-      } catch (err) { 
-        console.error('Counts fetch error:', err); 
-      } finally {
-        setLoading(false);
+  const fetchCounts = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/stats`);
+      const data = await res.json();
+      if (res.ok) {
+        setCounts({
+          loans: data.pendingSanctionCount || 0,
+          schedules: data.pendingScheduleCount || 0,
+          collections: data.pendingCollectionCount || 0,
+          pendingAmount: data.unpaidAmount || 0,
+          pendingReceipts: data.pendingReceiptCount || 0
+        });
       }
-    };
+    } catch (err) { 
+      console.error('Counts fetch error:', err); 
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Re-fetch whenever refreshKey changes (triggered by parent after approve)
+  useEffect(() => {
+    fetchCounts();
+  }, [refreshKey]);
+
+  useEffect(() => {
     fetchCounts();
     const interval = setInterval(fetchCounts, 15000);
     return () => clearInterval(interval);

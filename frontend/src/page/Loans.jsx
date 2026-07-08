@@ -34,6 +34,7 @@ export default function Loans() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   const amountOptions = [
     { value: 10000, label: '₹10,000 (12-Week Plan)' },
@@ -111,6 +112,7 @@ export default function Loans() {
         setSelectedAmount('');
         setFormMembers([]);
         fetchCenters();
+        setSidebarRefreshKey(k => k + 1); // ← Sidebar count உடனே update ஆகும்
       } else {
         alert('Error: ' + (data.error || 'Unknown error'));
       }
@@ -135,7 +137,7 @@ export default function Loans() {
         />
       )}
 
-      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />
+      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} refreshKey={sidebarRefreshKey} />
 
       <main className="flex-1 lg:ml-72 p-4 md:p-8 min-w-0">
         {/* Header */}

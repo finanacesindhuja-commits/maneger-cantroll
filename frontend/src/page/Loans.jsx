@@ -112,7 +112,8 @@ export default function Loans() {
         setSelectedAmount('');
         setFormMembers([]);
         fetchCenters();
-        setSidebarRefreshKey(k => k + 1); // ← Sidebar count உடனே update ஆகும்
+        // 500ms delay: backend cache flush + Supabase write propagate ஆகட்டும்
+        setTimeout(() => setSidebarRefreshKey(k => k + 1), 500);
       } else {
         alert('Error: ' + (data.error || 'Unknown error'));
       }

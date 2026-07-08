@@ -36,8 +36,18 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen, refreshKey })
   };
 
   // Re-fetch whenever refreshKey changes (triggered by parent after approve)
+  // Also do optimistic update: immediately decrement loans count
+  const isFirstMount = React.useRef(true);
   useEffect(() => {
-    fetchCounts();
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return; // initial mount - skip, the interval effect handles it
+    }
+    // Optimistic update: immediately reduce loans count by 1
+    setCounts(prev => ({ ...prev, loans: Math.max(0, prev.loans - 1) }));
+    // Then fetch fresh data from API after a short delay
+    const timer = setTimeout(() => fetchCounts(), 800);
+    return () => clearTimeout(timer);
   }, [refreshKey]);
 
   useEffect(() => {

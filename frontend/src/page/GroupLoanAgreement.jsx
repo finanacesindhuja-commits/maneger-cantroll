@@ -334,14 +334,7 @@ export default function GroupLoanAgreement() {
                       <span className="font-bold text-slate-900">{selectedCenter?.id || '---'}</span>
                     </div>
 
-                    <div className="flex justify-between border-b border-slate-100 pb-1">
-                      <span className="text-slate-500 font-semibold">Group Leader:</span>
-                      <span className="font-black text-indigo-900">{groupLeaderName || '---'}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-100 pb-1">
-                      <span className="text-slate-500 font-semibold">Group Secretary:</span>
-                      <span className="font-black text-indigo-900">{groupSecretaryName || '---'}</span>
-                    </div>
+                   
                   </div>
                 </div>
 
@@ -355,6 +348,14 @@ export default function GroupLoanAgreement() {
                       <span className="text-slate-500 font-semibold">Group Sanction Amount:</span>
                       <span className="font-black text-emerald-700">{principalAmount > 0 ? `₹ ${principalAmount.toLocaleString('en-IN')}` : '---'}</span>
                     </li>
+                     <div className="flex justify-between border-b border-slate-100 pb-1">
+                      <span className="text-slate-500 font-semibold">Group Leader:</span>
+                      <span className="font-black text-indigo-900">{groupLeaderName || '---'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1">
+                      <span className="text-slate-500 font-semibold">Group Secretary:</span>
+                      <span className="font-black text-indigo-900">{groupSecretaryName || '---'}</span>
+                    </div>
                   </ul>
                 </div>
               </div>

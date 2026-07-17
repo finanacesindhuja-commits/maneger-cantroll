@@ -6,6 +6,7 @@ import ScheduleDate from './page/ScheduleDate';
 import Collections from './page/Collections';
 import Staffs from './page/Staffs';
 import PendingCollections from './page/PendingCollections';
+import GroupLoanAgreement from './page/GroupLoanAgreement';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="/collections" element={<Collections />} />
         <Route path="/staffs" element={<Staffs />} />
         <Route path="/pending-collections" element={<PendingCollections />} />
+        <Route path="/group-loan-agreement" element={<GroupLoanAgreement />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

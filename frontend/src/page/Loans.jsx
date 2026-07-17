@@ -41,7 +41,7 @@ export default function Loans() {
     { value: 11000, label: '₹11,000 (15-Week Plan)' },
     { value: 12000, label: '₹12,000 (16-Week Plan)' },
     { value: 13000, label: '₹13,000 (18-Week Plan)' },
-    { value: 15000, label: '₹15,000' },
+    { value: 15000, label: '₹15,000 (20-Week Plan)' },
     { value: 20000, label: '₹20,000' }
   ];
 

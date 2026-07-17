@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^0.288.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.11.0",
     "react-router-dom": "^6.16.0",
-    "lucide-react": "^0.288.0"
+    "react-to-print": "^3.3.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.3",

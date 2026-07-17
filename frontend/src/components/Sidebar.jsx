@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   FaSignOutAlt, FaChartLine, FaUsers, FaFileInvoiceDollar, 
   FaCalendarAlt, FaFingerprint, FaTimes, FaHistory,
-  FaMoneyBillWave, FaExclamationCircle
+  FaMoneyBillWave, FaExclamationCircle, FaFileContract
 } from 'react-icons/fa';
 import { API_URL } from '../config';
 
@@ -111,6 +111,13 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen, refreshKey })
       path: '/staffs',
       color: 'slate'
     },
+    {
+      id: 'group-loan-agreement',
+      label: 'Group Loan Agreement',
+      icon: <FaFileContract />,
+      path: '/group-loan-agreement',
+      color: 'indigo'
+    }
   ];
 
   const colorMap = {

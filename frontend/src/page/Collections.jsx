@@ -208,7 +208,7 @@ export default function Collections() {
                 const col = efficiencyColor(staff.efficiency);
                 const isExpanded = expandedStaff === staff.staff_id;
                 const allMembers = staff.centers.flatMap(c => c.members);
-                const hasPaid = allMembers.some(m => m.status === 'Paid');
+                const hasPaid = allMembers.some(m => m.status === 'Paid' || m.status === 'Partial');
                 const hasReceived = allMembers.some(m => m.status === 'Received');
 
                 return (
@@ -361,7 +361,7 @@ export default function Collections() {
                                 {/* Member Breakdown — only collected bills (Paid / Received) */}
                                 {isCenterExpanded && (() => {
                                   const collectedMembers = center.members.filter(
-                                    m => m.status === 'Paid' || m.status === 'Received'
+                                    m => m.status === 'Paid' || m.status === 'Received' || m.status === 'Partial'
                                   );
                                   const pendingMembers = center.members.filter(
                                     m => m.status === 'Approved' || m.status === 'Pending'

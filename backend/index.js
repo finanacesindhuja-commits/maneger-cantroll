@@ -1039,7 +1039,7 @@ app.put('/api/schedules/receive-bulk', async (req, res) => {
       })
       .eq('center_id', centerId)
       .eq('scheduled_date', scheduledDate)
-      .eq('status', 'Paid')
+      .in('status', ['Paid', 'Partial'])
       .select();
 
     if (error) throw error;
@@ -1177,7 +1177,7 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
       })
       .in('center_id', centerIds)
       .eq('scheduled_date', scheduledDate)
-      .eq('status', 'Paid') // Only receive collected items
+      .in('status', ['Paid', 'Partial']) // Only receive collected items
       .select();
 
     if (error) throw error;
@@ -1407,7 +1407,7 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
       if (!staffMap[sid]) return;
 
       const amt = Number(s.amount) || 0;
-      const collAmt = (s.status === 'Paid' || s.status === 'Received')
+      const collAmt = (s.status === 'Paid' || s.status === 'Received' || s.status === 'Partial')
         ? (Number(s.collected_amount) || amt)
         : 0;
 

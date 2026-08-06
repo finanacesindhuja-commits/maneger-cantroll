@@ -333,7 +333,12 @@ export default function Collections() {
                                 >
                                   <div className="flex justify-between items-start mb-3">
                                     <div>
-                                      <h4 className="text-white font-black text-sm uppercase tracking-tight">{center.center_name}</h4>
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="text-white font-black text-sm uppercase tracking-tight">{center.center_name}</h4>
+                                        {center.week_number && (
+                                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-indigo-400 bg-indigo-500/10 border border-indigo-500/20">Week {center.week_number}</span>
+                                        )}
+                                      </div>
                                       <p className="text-[9px] text-slate-500 font-bold mt-0.5">{center.members.length} members</p>
                                     </div>
                                     <span className={`text-[10px] font-black px-2 py-1 rounded-lg border ${cCol.bg} ${cCol.text}`}>{cEff}%</span>

@@ -1376,7 +1376,7 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
     // 3. Fetch ALL schedules for the selected date
     const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
-      .select('id, center_id, center_name, member_name, amount, collected_amount, status, scheduled_date, approved_at')
+      .select('id, center_id, center_name, member_name, amount, collected_amount, status, scheduled_date, approved_at, week_number')
       .eq('scheduled_date', date);
     if (schError) throw schError;
 
@@ -1421,11 +1421,16 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
           center_name: centerInfo.center_name || s.center_name || 'Unknown',
           target: 0,
           collected: 0,
+          week_number: s.week_number || null,
           members: []
         };
       }
       staffMap[sid].centers[cid].target += amt;
       staffMap[sid].centers[cid].collected += collAmt;
+      // In case week_number wasn't captured on the first item
+      if (!staffMap[sid].centers[cid].week_number && s.week_number) {
+          staffMap[sid].centers[cid].week_number = s.week_number;
+      }
       staffMap[sid].centers[cid].members.push({
         member_name: s.member_name,
         amount: amt,

@@ -1386,13 +1386,13 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
     if (memberIds.length > 0) {
       const { data: loans, error: loansError } = await supabase
         .from('loans')
-        .select('id, member_id, amount_sanctioned')
+        .select('id, member_id, member_name, amount_sanctioned')
         .or(`id.in.(${memberIds.join(',')}),member_id.in.(${memberIds.join(',')})`);
       
       if (!loansError && loans) {
         loans.forEach(l => {
-          if (l.id) loansMap[l.id] = l.amount_sanctioned;
-          if (l.member_id) loansMap[l.member_id] = l.amount_sanctioned;
+          if (l.id && l.member_name) loansMap[`${l.id}_${l.member_name}`] = l.amount_sanctioned;
+          if (l.member_id && l.member_name) loansMap[`${l.member_id}_${l.member_name}`] = l.amount_sanctioned;
         });
       }
     }
@@ -1451,7 +1451,7 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
       staffMap[sid].centers[cid].members.push({
         member_name: s.member_name,
         amount: amt,
-        total_loan: loansMap[s.member_id] || 0,
+        total_loan: loansMap[`${s.member_id}_${s.member_name}`] || 0,
         collected: collAmt,
         status: s.status
       });

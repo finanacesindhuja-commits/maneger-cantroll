@@ -397,7 +397,12 @@ export default function Collections() {
                                             <div key={idx} className="flex justify-between items-center px-4 py-2.5">
                                               <div>
                                                 <p className="text-xs font-bold text-slate-300 uppercase">{m.member_name}</p>
-                                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-amber-400 bg-amber-500/10">{m.status}</span>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-amber-400 bg-amber-500/10">{m.status}</span>
+                                                  {m.total_loan > 0 && (
+                                                    <span className="text-[8px] font-black text-slate-400 bg-white/5 px-1.5 py-0.5 rounded uppercase border border-white/5">Loan: ₹{m.total_loan.toLocaleString()}</span>
+                                                  )}
+                                                </div>
                                               </div>
                                               <div className="text-right">
                                                 <p className="text-xs font-black text-white">₹{m.amount.toLocaleString()}</p>
@@ -427,7 +432,12 @@ export default function Collections() {
                                               <div key={`p-${idx}`} className="flex justify-between items-center px-4 py-2.5 bg-red-500/5">
                                                 <div>
                                                   <p className="text-xs font-bold text-slate-300 uppercase">{m.member_name}</p>
-                                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-slate-400 bg-white/10">Pending</span>
+                                                  <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase text-slate-400 bg-white/10">Pending</span>
+                                                    {m.total_loan > 0 && (
+                                                      <span className="text-[8px] font-black text-slate-500 bg-white/5 px-1.5 py-0.5 rounded uppercase border border-white/5">Loan: ₹{m.total_loan.toLocaleString()}</span>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 <div className="text-right">
                                                   <p className="text-xs font-black text-slate-300">₹{m.amount.toLocaleString()}</p>

@@ -1376,9 +1376,25 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
     // 3. Fetch ALL schedules for the selected date
     const { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
-      .select('id, center_id, center_name, member_name, amount, collected_amount, status, scheduled_date, approved_at, week_number')
+      .select('id, center_id, center_name, member_id, member_name, amount, collected_amount, status, scheduled_date, approved_at, week_number')
       .eq('scheduled_date', date);
     if (schError) throw schError;
+
+    // 3b. Fetch total loan amount for these members
+    const memberIds = [...new Set((schedules || []).map(s => s.member_id).filter(Boolean))];
+    let loansMap = {};
+    if (memberIds.length > 0) {
+      const { data: loans, error: loansError } = await supabase
+        .from('loans')
+        .select('id, amount_sanctioned')
+        .in('id', memberIds);
+      
+      if (!loansError && loans) {
+        loans.forEach(l => {
+          loansMap[l.id] = l.amount_sanctioned;
+        });
+      }
+    }
 
     // 4. Build center → staff map
     const centerToStaff = {};
@@ -1434,6 +1450,7 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
       staffMap[sid].centers[cid].members.push({
         member_name: s.member_name,
         amount: amt,
+        total_loan: loansMap[s.member_id] || 0,
         collected: collAmt,
         status: s.status
       });

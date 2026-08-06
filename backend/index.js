@@ -1386,12 +1386,13 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
     if (memberIds.length > 0) {
       const { data: loans, error: loansError } = await supabase
         .from('loans')
-        .select('id, amount_sanctioned')
-        .in('id', memberIds);
+        .select('id, member_id, amount_sanctioned')
+        .or(`id.in.(${memberIds.join(',')}),member_id.in.(${memberIds.join(',')})`);
       
       if (!loansError && loans) {
         loans.forEach(l => {
-          loansMap[l.id] = l.amount_sanctioned;
+          if (l.id) loansMap[l.id] = l.amount_sanctioned;
+          if (l.member_id) loansMap[l.member_id] = l.amount_sanctioned;
         });
       }
     }

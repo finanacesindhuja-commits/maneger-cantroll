@@ -25,8 +25,9 @@ export default function GroupLoanAgreement() {
   const componentRef = useRef();
 
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
+    contentRef: componentRef,
     documentTitle: 'Group_Loan_Agreement',
+    pageStyle: "@page { size: A4; margin: 4mm; } @media print { body { -webkit-print-color-adjust: exact; } }",
   });
 
   useEffect(() => {
@@ -228,7 +229,7 @@ export default function GroupLoanAgreement() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={handlePrint}
+              onClick={() => handlePrint()}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors text-sm font-semibold shadow-lg shadow-indigo-500/20"
             >
               <FaPrint /> Print / PDF
@@ -290,7 +291,7 @@ export default function GroupLoanAgreement() {
               style={{
                 width: '210mm',
                 minHeight: '297mm',
-                padding: '10mm 15mm',
+                padding: '5mm 10mm',
                 boxSizing: 'border-box'
               }}
             >
@@ -298,7 +299,7 @@ export default function GroupLoanAgreement() {
               <div className="border-b-2 border-indigo-600 pb-2 mb-3 flex items-start justify-between">
                 {/* Left - Brand & Logo */}
                 <div className="flex items-center gap-4">
-                  <img src="/logo.png" alt="Logo" className="h-24 w-24 object-contain" onError={(e) => e.target.style.display = 'none'} />
+                  <img src="/logo.png" alt="Logo" className="h-16 w-16 object-contain" onError={(e) => e.target.style.display = 'none'} />
                   <div className="flex flex-col justify-center">
                     <h1 className="text-3xl font-black text-indigo-900 tracking-tighter uppercase leading-none">SINDHUJA.FIN</h1>
                     <p className="text-sm font-black text-slate-500 tracking-widest uppercase mt-1 text-right">Finance</p>
@@ -364,7 +365,7 @@ export default function GroupLoanAgreement() {
                 <h4 className="font-black text-slate-900 uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
                   <span className="w-2 h-2 bg-indigo-500 rounded-full"></span> குழு கடன் நிபந்தனைகள் மற்றும் உறுதிமொழி
                 </h4>
-                <ul className="list-disc pl-4 space-y-1 font-semibold text-[9px] columns-2 gap-8 text-justify">
+                <ul className="list-disc pl-4 space-y-0.5 font-semibold text-[8px] print:text-[7.5px] print:leading-[1.1] columns-2 gap-6 text-justify">
                   <li>ஒரு குழுவில் குறைந்தபட்சம் 5 உறுப்பினர்கள் மற்றும் அதிகபட்சம் 20 உறுப்பினர்கள் இருக்க வேண்டும்.</li>
                   <li>அனைத்து உறுப்பினர்களும் 18 முதல் 60 வயதுக்குள் இருக்க வேண்டும்.</li>
                   <li>ஒவ்வொரு உறுப்பினரும் செல்லுபடியாகும் அடையாள ஆவணம் (ஆதார் அட்டை, வாக்காளர் அட்டை போன்றவை) மற்றும் முகவரி சான்று வழங்க வேண்டும்.</li>
@@ -409,17 +410,17 @@ export default function GroupLoanAgreement() {
                 <table className="w-full text-sm border-collapse border border-slate-300">
                   <thead>
                     <tr className="bg-slate-100 text-slate-700">
-                      <th className="border border-slate-300 py-2 px-3 text-left w-10 font-bold uppercase tracking-widest text-[10px]">S.No</th>
-                      <th className="border border-slate-300 py-2 px-3 text-left font-bold uppercase tracking-widest text-[10px]">Member Details</th>
-                      <th className="border border-slate-300 py-2 px-3 text-center w-32 font-bold uppercase tracking-widest text-[10px]">Approved Amount</th>
-                      <th className="border border-slate-300 py-2 px-3 text-left w-48 font-bold uppercase tracking-widest text-[10px]">Signature / Thumbprint</th>
+                      <th className="border border-slate-300 py-1 px-2 text-left w-10 font-bold uppercase tracking-widest text-[10px]">S.No</th>
+                      <th className="border border-slate-300 py-1 px-2 text-left font-bold uppercase tracking-widest text-[10px]">Member Details</th>
+                      <th className="border border-slate-300 py-1 px-2 text-center w-32 font-bold uppercase tracking-widest text-[10px]">Approved Amount</th>
+                      <th className="border border-slate-300 py-1 px-2 text-left w-48 font-bold uppercase tracking-widest text-[10px]">Signature / Thumbprint</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(members.length > 0 ? members : Array(10).fill({})).map((member, idx) => (
                       <tr key={member.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                        <td className="border border-slate-300 py-2 px-3 font-black text-slate-400 text-center">{idx + 1}</td>
-                        <td className="border border-slate-300 py-2 px-3">
+                        <td className="border border-slate-300 py-1 px-2 font-black text-slate-400 text-center">{idx + 1}</td>
+                        <td className="border border-slate-300 py-1 px-2">
                           {member.name ? (
                             <div>
                               <div className="font-black text-slate-800 uppercase">{member.name}</div>
@@ -429,7 +430,7 @@ export default function GroupLoanAgreement() {
                             <div className="text-slate-300 italic">No Member</div>
                           )}
                         </td>
-                        <td className="border border-slate-300 py-2 px-3 text-center">
+                        <td className="border border-slate-300 py-1 px-2 text-center">
                           <span className="font-black text-emerald-700 text-sm">
                             {member.loan_amount
                               ? `₹ ${Number(member.loan_amount).toLocaleString('en-IN')}`
@@ -438,7 +439,7 @@ export default function GroupLoanAgreement() {
                                 : ''}
                           </span>
                         </td>
-                        <td className="border border-slate-300 py-2 px-3 text-center">
+                        <td className="border border-slate-300 py-1 px-2 text-center">
                           <span className="text-[9px] text-slate-300 uppercase tracking-widest">Sign Here</span>
                         </td>
                       </tr>

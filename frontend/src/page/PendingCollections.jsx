@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, Users, Clock, Calendar, RefreshCw, 
-  User, Menu, Search, Filter, AlertCircle, ChevronRight, DollarSign, Building2, UserCheck
+  User, Menu, Search, Filter, AlertCircle, ChevronRight, DollarSign, Building2, UserCheck, Phone
 } from 'lucide-react';
 import { API_URL } from '../config';
 import Sidebar from '../components/Sidebar';
@@ -88,6 +88,10 @@ export default function PendingCollections() {
         groups[key] = {
           member_id: s.member_id,
           member_name: s.member_name,
+          mobile_no: s.mobile_no || null,
+          nominee_name: s.nominee_name || null,
+          nominee_mobile: s.nominee_mobile || null,
+          nominee_relationship: s.nominee_relationship || null,
           center_name: s.center_name,
           center_id: s.center_id,
           branch: s.branch,
@@ -97,6 +101,13 @@ export default function PendingCollections() {
           missed_installments: []
         };
       }
+      if (!groups[key].mobile_no && s.mobile_no) groups[key].mobile_no = s.mobile_no;
+      if (!groups[key].nominee_name && s.nominee_name) {
+        groups[key].nominee_name = s.nominee_name;
+        groups[key].nominee_mobile = s.nominee_mobile;
+        groups[key].nominee_relationship = s.nominee_relationship;
+      }
+
       const daysOverdue = calculateDaysOverdue(s.scheduled_date);
       const amt = Number(s.amount) || 0;
       const coll = Number(s.collected_amount) || 0;
@@ -142,10 +153,15 @@ export default function PendingCollections() {
   // Apply search & select filters to grouped list
   const filteredGroupedMembers = useMemo(() => {
     return groupedUnpaidMembers.filter(g => {
+      const query = searchQuery.toLowerCase();
       const matchesSearch = 
-        (g.member_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (g.center_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (g.member_id || '').toString().includes(searchQuery);
+        (g.member_name || '').toLowerCase().includes(query) ||
+        (g.center_name || '').toLowerCase().includes(query) ||
+        (g.member_id || '').toString().includes(query) ||
+        (g.mobile_no || '').toString().includes(query) ||
+        (g.nominee_name || '').toLowerCase().includes(query) ||
+        (g.nominee_mobile || '').toString().includes(query) ||
+        (g.nominee_relationship || '').toLowerCase().includes(query);
 
       const matchesStaff = selectedStaff === 'All' || g.staff_name === selectedStaff;
       const matchesBranch = selectedBranch === 'All' || g.branch === selectedBranch;
@@ -259,11 +275,11 @@ export default function PendingCollections() {
         {/* Filter Toolbar */}
         <div className="bg-[#09090e]/50 border border-white/[0.05] backdrop-blur-xl rounded-3xl p-5 mb-8 flex flex-col md:flex-row gap-4 justify-between items-center shadow-xl">
           {/* Search */}
-          <div className="relative w-full md:w-72">
+          <div className="relative w-full md:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
             <input 
               type="text" 
-              placeholder="Search member or center..." 
+              placeholder="Search member, mobile, nominee, center..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/[0.08] hover:border-white/20 rounded-2xl text-slate-200 text-xs font-bold focus:outline-none focus:border-indigo-500/50 transition-all"
@@ -310,17 +326,18 @@ export default function PendingCollections() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-white/[0.02] border-b border-white/[0.05] text-slate-400 text-[10px] uppercase font-extrabold tracking-widest">
-                  <th className="px-6 py-4">Member</th>
+                  <th className="px-6 py-4">Member Details</th>
+                  <th className="px-6 py-4">Nominee Details</th>
                   <th className="px-6 py-4">Center & Branch</th>
                   <th className="px-6 py-4">Relationship Officer (RO)</th>
-                  <th className="px-6 py-4"> Missed Weeks & Dates</th>
+                  <th className="px-6 py-4">Missed Weeks & Dates</th>
                   <th className="px-6 py-4 text-right">Total Overdue</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04] text-xs">
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-20 text-center text-slate-500 font-bold">
+                    <td colSpan="6" className="px-6 py-20 text-center text-slate-500 font-bold">
                       <div className="flex flex-col items-center gap-3">
                         <RefreshCw className="animate-spin text-indigo-500 w-8 h-8" />
                         <span>Loading overdue bills...</span>
@@ -329,7 +346,7 @@ export default function PendingCollections() {
                   </tr>
                 ) : filteredGroupedMembers.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-20 text-center text-slate-500 font-bold">
+                    <td colSpan="6" className="px-6 py-20 text-center text-slate-500 font-bold">
                       <div className="flex flex-col items-center gap-2">
                         <AlertCircle className="w-8 h-8 text-slate-600 mb-1" />
                         <span className="uppercase text-[10px] tracking-wider">No pending bills match your filters.</span>
@@ -339,6 +356,7 @@ export default function PendingCollections() {
                 ) : filteredGroupedMembers.map((group) => {
                   return (
                     <tr key={`${group.member_id}_${group.member_name}`} className="group hover:bg-white/[0.02] transition-all duration-200">
+                      {/* Member Info */}
                       <td className="px-6 py-4">
                         <div className="font-extrabold text-white text-sm tracking-tight uppercase group-hover:text-indigo-300 transition-colors">
                           {group.member_name}
@@ -346,6 +364,22 @@ export default function PendingCollections() {
                         <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
                           Member ID: #{group.member_id}
                         </div>
+                        {group.mobile_no ? (
+                          <div className="mt-1">
+                            <a 
+                              href={`tel:${group.mobile_no}`} 
+                              className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md transition-colors"
+                              title="Call Member"
+                            >
+                              <Phone size={10} className="text-emerald-400" />
+                              <span>{group.mobile_no}</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="text-[9px] text-slate-600 font-medium italic mt-0.5">
+                            No Mobile
+                          </div>
+                        )}
                         {group.max_days_overdue > 0 && (
                           <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
                             group.max_days_overdue > 14
@@ -356,6 +390,38 @@ export default function PendingCollections() {
                           </span>
                         )}
                       </td>
+
+                      {/* Nominee Info */}
+                      <td className="px-6 py-4">
+                        {group.nominee_name ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="font-bold text-slate-200 text-xs tracking-tight uppercase">
+                              {group.nominee_name}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {group.nominee_relationship && (
+                                <span className="text-[9px] font-bold text-purple-300 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded uppercase">
+                                  {group.nominee_relationship}
+                                </span>
+                              )}
+                              {group.nominee_mobile && (
+                                <a 
+                                  href={`tel:${group.nominee_mobile}`} 
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-300 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded transition-colors"
+                                  title="Call Nominee"
+                                >
+                                  <Phone size={9} className="text-indigo-400" />
+                                  <span>{group.nominee_mobile}</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] font-semibold italic">N/A</span>
+                        )}
+                      </td>
+
+                      {/* Center & Branch */}
                       <td className="px-6 py-4">
                         <div className="font-bold text-slate-300 uppercase">{group.center_name}</div>
                         <div className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-0.5">
@@ -363,6 +429,8 @@ export default function PendingCollections() {
                           {group.branch || 'N/A'}
                         </div>
                       </td>
+
+                      {/* Relationship Officer */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full bg-white/5 border border-white/5 flex items-center justify-center font-extrabold text-[8px] text-slate-400 uppercase">
@@ -374,6 +442,8 @@ export default function PendingCollections() {
                           </div>
                         </div>
                       </td>
+
+                      {/* Missed Weeks */}
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5">
                           <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider">
@@ -389,6 +459,8 @@ export default function PendingCollections() {
                           </div>
                         </div>
                       </td>
+
+                      {/* Total Overdue */}
                       <td className="px-6 py-4 font-black text-white text-sm text-right">
                         ₹{group.total_amount.toLocaleString()}
                       </td>

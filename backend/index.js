@@ -701,16 +701,19 @@ app.get('/api/schedules', cacheMiddleware(10), async (req, res) => {
     if (schError) throw schError;
 
     // Fetch all needed mapping data in parallel
-    const [centersRes, staffRes] = await Promise.all([
+    const [centersRes, staffRes, loansRes] = await Promise.all([
       supabase.from('centers').select('id, staff_id'),
-      supabase.from('staff').select('staff_id, branch, name')
+      supabase.from('staff').select('staff_id, branch, name'),
+      supabase.from('loans').select('id, member_id, mobile_no, nominee_name, nominee_mobile, nominee_relationship')
     ]);
 
     if (centersRes.error) console.error('Centers mapping error:', centersRes.error);
     if (staffRes.error) console.error('Staff mapping error:', staffRes.error);
+    if (loansRes.error) console.error('Loans mapping error:', loansRes.error);
 
     const centers = centersRes.data || [];
     const staffList = staffRes.data || [];
+    const loansList = loansRes.data || [];
 
     // Create lookup maps with extreme normalization
     const centerToStaffMap = {};
@@ -732,18 +735,34 @@ app.get('/api/schedules', cacheMiddleware(10), async (req, res) => {
       }
     });
 
-    // Enrich schedules with staff details
+    const loanMap = {};
+    const memberLoanMap = {};
+    loansList.forEach(l => {
+      if (l.id) {
+        loanMap[String(l.id)] = l;
+      }
+      if (l.member_id) {
+        memberLoanMap[String(l.member_id)] = l;
+      }
+    });
+
+    // Enrich schedules with staff details and loan/member/nominee details
     const enriched = (schedules || []).map(s => {
       const cidKey = s.center_id ? String(s.center_id).trim().toLowerCase() : null;
       const staffId = cidKey ? centerToStaffMap[cidKey] : null;
       const sidKey = staffId ? String(staffId).trim().toLowerCase() : null;
       const info = sidKey ? staffInfoMap[sidKey] : null;
+      const loan = (s.loan_id ? loanMap[String(s.loan_id)] : null) || (s.member_id ? memberLoanMap[String(s.member_id)] : null);
       
       return {
         ...s,
         staff_id: staffId ? String(staffId).trim() : 'N/A',
         staff_name: info?.name || 'Unknown',
         branch: info?.branch || 'N/A',
+        mobile_no: loan?.mobile_no || null,
+        nominee_name: loan?.nominee_name || null,
+        nominee_mobile: loan?.nominee_mobile || null,
+        nominee_relationship: loan?.nominee_relationship || null,
         penalty: getPenalty(s.scheduled_date, s.status)
       };
     });

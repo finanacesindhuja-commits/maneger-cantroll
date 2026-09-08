@@ -361,11 +361,11 @@ export default function GroupLoanAgreement() {
               </div>
 
               {/* Terms and Conditions (Tamil) */}
-              <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed font-medium" style={{ pageBreakInside: 'avoid' }}>
+              <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-800 leading-relaxed font-medium" style={{ pageBreakInside: 'avoid' }}>
                 <h4 className="font-black text-slate-900 uppercase mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
                   <span className="w-2 h-2 bg-indigo-500 rounded-full"></span> குழு கடன் நிபந்தனைகள் மற்றும் உறுதிமொழி
                 </h4>
-                <ul className="list-disc pl-4 space-y-0.5 font-semibold text-[8px] print:text-[7.5px] print:leading-[1.1] columns-2 gap-6 text-justify">
+                <ul className="list-disc pl-4 space-y-0.5 font-semibold text-[10px] print:text-[7.5px] print:leading-[1.1] columns-2 gap-6 text-justify">
                   <li>ஒரு குழுவில் குறைந்தபட்சம் 5 உறுப்பினர்கள் மற்றும் அதிகபட்சம் 20 உறுப்பினர்கள் இருக்க வேண்டும்.</li>
                   <li>அனைத்து உறுப்பினர்களும் 18 முதல் 60 வயதுக்குள் இருக்க வேண்டும்.</li>
                   <li>ஒவ்வொரு உறுப்பினரும் செல்லுபடியாகும் அடையாள ஆவணம் (ஆதார் அட்டை, வாக்காளர் அட்டை போன்றவை) மற்றும் முகவரி சான்று வழங்க வேண்டும்.</li>

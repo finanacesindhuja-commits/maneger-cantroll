@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   FaSignOutAlt, FaChartLine, FaUsers, FaFileInvoiceDollar, 
   FaCalendarAlt, FaFingerprint, FaTimes, FaHistory,
-  FaMoneyBillWave, FaExclamationCircle, FaFileContract
+  FaMoneyBillWave, FaExclamationCircle, FaFileContract, FaPiggyBank
 } from 'react-icons/fa';
 import { API_URL } from '../config';
 
@@ -103,6 +103,13 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen, refreshKey })
       badgeLabel: (v) => `₹${v.toLocaleString('en-IN')}`,
       badgeColor: 'rose',
       urgency: (v) => v > 0
+    },
+    { 
+      id: 'savings', 
+      label: 'Savings & STP', 
+      icon: <FaPiggyBank />, 
+      path: '/savings',
+      color: 'emerald'
     },
     { 
       id: 'staffs', 

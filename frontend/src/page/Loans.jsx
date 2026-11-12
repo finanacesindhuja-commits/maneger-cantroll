@@ -25,7 +25,8 @@ export default function Loans() {
 
   const [centers, setCenters] = useState([]);
   const [selectedCenter, setSelectedCenter] = useState('');
-  const [selectedAmount, setSelectedAmount] = useState('');
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [stpAmount, setStpAmount] = useState('150');
   const [actionLoading, setActionLoading] = useState(false);
   const [formMembers, setFormMembers] = useState([]);
   const [formLoading, setFormLoading] = useState(false);
@@ -37,13 +38,26 @@ export default function Loans() {
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   const amountOptions = [
-    { value: 10000, label: '₹10,000 (12-Week Plan)' },
-    { value: 11000, label: '₹11,000 (15-Week Plan)' },
-    { value: 12000, label: '₹12,000 (16-Week Plan)' },
-    { value: 13000, label: '₹13,000 (18-Week Plan)' },
-    { value: 15000, label: '₹15,000 (22-Week Plan)' },
-    { value: 20000, label: '₹20,000' }
+    { id: '10000_12w', value: 10000, label: '₹10,000 (12-Week Plan)' },
+    {
+      id: '10000_saving',
+      value: 10000,
+      label: '₹10,000 (Saving)',
+      isSaving: true,
+      weeks: 15,
+      weeklyAmount: 990,
+      emiAmount: 890,
+      savingPerWeek: 100,
+      defaultStp: 150
+    },
+    { id: '11000_15w', value: 11000, label: '₹11,000 (15-Week Plan)' },
+    { id: '12000_16w', value: 12000, label: '₹12,000 (16-Week Plan)' },
+    { id: '13000_18w', value: 13000, label: '₹13,000 (18-Week Plan)' },
+    { id: '15000_22w', value: 15000, label: '₹15,000 (22-Week Plan)' },
+    { id: '20000', value: 20000, label: '₹20,000' }
   ];
+
+  const selectedPlan = amountOptions.find(p => p.id === selectedPlanId) || null;
 
   useEffect(() => {
     fetchCenters();
@@ -91,25 +105,28 @@ export default function Loans() {
 
   const handleSanctionCenter = async (e) => {
     e.preventDefault();
-    if (!selectedCenter || !selectedAmount) return alert('Please select a Center and Amount.');
-    const selectedPlan = amountOptions.find(p => p.value === Number(selectedAmount));
+    if (!selectedCenter || !selectedPlan) return alert('Please select a Center and Amount.');
     setActionLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/centers/${selectedCenter}/sanction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          amountSanctioned: selectedAmount, 
-          schemeName: selectedPlan?.label || 'General Plan',
+          amountSanctioned: selectedPlan.value, 
+          schemeName: selectedPlan.label || 'General Plan',
+          isSavingPlan: Boolean(selectedPlan.isSaving),
+          stpAmount: selectedPlan.isSaving ? Number(stpAmount || 0) : 0,
+          savingPerWeek: selectedPlan.isSaving ? selectedPlan.savingPerWeek : 0,
           staffId 
         })
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccessMsg(`✅ ₹${Number(selectedAmount).toLocaleString('en-IN')} approved successfully!`);
+        setSuccessMsg(`✅ ${selectedPlan.label} approved successfully!`);
         setTimeout(() => setSuccessMsg(''), 5000);
         setSelectedCenter('');
-        setSelectedAmount('');
+        setSelectedPlanId('');
+        setStpAmount('150');
         setFormMembers([]);
         fetchCenters();
         // 500ms delay: backend cache flush + Supabase write propagate ஆகட்டும்
@@ -321,20 +338,75 @@ export default function Loans() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Amount Select</label>
                   <select 
-                    value={selectedAmount} 
-                    onChange={(e) => setSelectedAmount(e.target.value)} 
+                    value={selectedPlanId} 
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setSelectedPlanId(pid);
+                      const plan = amountOptions.find(p => p.id === pid);
+                      if (plan?.isSaving) {
+                        setStpAmount(String(plan.defaultStp ?? 150));
+                      }
+                    }} 
                     className="w-full bg-[#0a0f1c] border border-white/10 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-amber-500 transition-all font-bold appearance-none"
                   >
                     <option value="">-- Amount Select--</option>
                     {amountOptions.map(amt => (
-                      <option key={amt.value} value={amt.value}>{amt.label}</option>
+                      <option key={amt.id} value={amt.id}>{amt.label}</option>
                     ))}
                   </select>
                 </div>
 
+                {/* Saving & STP Breakdown Card */}
+                {selectedPlan?.isSaving && (
+                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                        Saving Plan Breakdown (15-Week Standard)
+                      </span>
+                      <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-full">
+                        ₹990 / Week × 15
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
+                      <div className="bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Weekly EMI</p>
+                        <p className="text-base font-black text-white mt-0.5">₹890</p>
+                        <p className="text-[9px] text-slate-500">15 Wks = ₹13,350</p>
+                      </div>
+                      <div className="bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Weekly Saving</p>
+                        <p className="text-base font-black text-emerald-400 mt-0.5">₹100</p>
+                        <p className="text-[9px] text-slate-500">15 Wks = ₹1,500</p>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1 bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Loan Interest + STP</p>
+                        <p className="text-base font-black text-amber-400 mt-0.5">
+                          ₹{(3350 + (Number(stpAmount) || 0)).toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[9px] text-slate-500">₹3,350 + ₹{Number(stpAmount) || 0} STP</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">
+                        STP Amount Per Member (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={stpAmount}
+                        onChange={(e) => setStpAmount(e.target.value)}
+                        className="w-full bg-[#0a0f1c] border border-emerald-500/30 rounded-xl px-4 py-2.5 text-white font-bold text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        placeholder="150"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <button 
                   type="submit" 
-                  disabled={actionLoading || !selectedCenter || !selectedAmount || sanctionCenters.length === 0} 
+                  disabled={actionLoading || !selectedCenter || !selectedPlanId || sanctionCenters.length === 0} 
                   className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-slate-900 font-black py-4 rounded-2xl shadow-xl shadow-amber-500/20 uppercase tracking-widest text-xs active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   {actionLoading ? (

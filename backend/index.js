@@ -587,7 +587,7 @@ app.get('/api/loans/sanction-queue', cacheMiddleware(10), async (req, res) => {
 // 2. Sanction all loans in a center (Step 1 of Manager Workflow)
 app.post('/api/centers/:id/sanction', async (req, res) => {
   const { id } = req.params;
-  const { amountSanctioned, schemeName, staffId } = req.body;
+  const { amountSanctioned, schemeName, staffId, isSavingPlan, stpAmount, savingPerWeek } = req.body;
   try {
     // Get all PD-verified members for this center (APPROVED or VERIFIED or pd_verified=true)
     const { data: pdData } = await supabase
@@ -632,21 +632,66 @@ app.post('/api/centers/:id/sanction', async (req, res) => {
     }
 
     const loanIds = approvedLoans.map(l => l.id);
+    const isSaving = Boolean(isSavingPlan) || String(schemeName || '').toLowerCase().includes('saving');
+    const resolvedStp = isSaving ? (stpAmount !== undefined && stpAmount !== '' ? Number(stpAmount) : 150) : 0;
+    const resolvedSavingPerWeek = isSaving ? (savingPerWeek !== undefined && savingPerWeek !== '' ? Number(savingPerWeek) : 100) : 0;
 
-    // Bulk update to SANCTIONED
-    const { data, error } = await supabase
+    const baseUpdate = {
+      status: 'SANCTIONED',
+      amount_sanctioned: amountSanctioned,
+      scheme_name: schemeName,
+      sanctioned_at: new Date().toISOString(),
+      disbursement_app_status: 'STORED'
+    };
+
+    // Bulk update to SANCTIONED (include Saving/STP columns, fallback gracefully if SQL migration not run yet)
+    let { data, error } = await supabase
       .from('loans')
       .update({
-        status: 'SANCTIONED',
-        amount_sanctioned: amountSanctioned,
-        scheme_name: schemeName,
-        sanctioned_at: new Date().toISOString(),
-        disbursement_app_status: 'STORED'
+        ...baseUpdate,
+        is_saving_plan: isSaving,
+        stp_amount: resolvedStp,
+        saving_per_week: resolvedSavingPerWeek,
+        total_saving: 0
       })
       .in('id', loanIds)
       .select();
 
+    if (error && /column|schema cache/i.test(error.message || '')) {
+      console.warn('Saving columns missing in loans table, falling back to base sanction update:', error.message);
+      const fallbackRes = await supabase
+        .from('loans')
+        .update(baseUpdate)
+        .in('id', loanIds)
+        .select();
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
+
     if (error) throw error;
+
+    // Record STP entry in member_savings ledger if Saving Plan and STP > 0
+    if (isSaving && resolvedStp > 0 && Array.isArray(data) && data.length > 0) {
+      try {
+        const stpRows = data.map(l => ({
+          loan_id: l.id,
+          member_id: l.member_id || null,
+          member_name: l.member_name || l.person_name || 'Unknown',
+          center_id: l.center_id || Number(id),
+          center_name: l.center_name || null,
+          transaction_type: 'STP',
+          amount: resolvedStp,
+          notes: `Initial STP deduction on ${schemeName}`,
+          created_by: staffId || 'Manager'
+        }));
+        const { error: stpErr } = await supabase.from('member_savings').insert(stpRows);
+        if (stpErr) console.warn('Could not insert STP into member_savings (run add_saving_plan_setup.sql):', stpErr.message);
+      } catch (stpEx) {
+        console.warn('STP ledger insert skipped:', stpEx.message);
+      }
+    }
+
+    flushCache();
     res.json({ message: `Successfully sanctioned ${data.length} loans. Stored in Supabase.`, count: data.length });
   } catch (error) {
     console.error('Bulk sanction error:', error);
@@ -857,6 +902,15 @@ app.post('/api/schedules', async (req, res) => {
     }
   };
 
+  // Dedicated 15-Week Standard Plan for ₹10,000 (Saving): ₹890 EMI + ₹100 Saving = ₹990/week
+  const saving10kPlan = {
+    name: "₹10,000 (Saving)",
+    weeks: 15,
+    emiPerWeek: 890,
+    savingPerWeek: 100,
+    amounts: Array(15).fill(990)
+  };
+
   try {
     // 0. Fetch custom holidays from Supabase to merge with fallback list
     let dbHolidays = [];
@@ -899,11 +953,21 @@ app.post('/api/schedules', async (req, res) => {
     };
 
     // 1. Get all eligible loans for this center that are in 'CREDITED' state
-    const { data: loansToActivate, error: loanFetchError } = await supabase
+    let { data: loansToActivate, error: loanFetchError } = await supabase
       .from('loans')
-      .select('id, member_name, amount_sanctioned')
+      .select('id, member_name, amount_sanctioned, scheme_name, is_saving_plan, saving_per_week')
       .eq('center_id', Number(centerId))
       .eq('status', 'CREDITED');
+
+    if (loanFetchError && /column|schema cache/i.test(loanFetchError.message || '')) {
+      const fallbackLoansRes = await supabase
+        .from('loans')
+        .select('id, member_name, amount_sanctioned, scheme_name')
+        .eq('center_id', Number(centerId))
+        .eq('status', 'CREDITED');
+      loansToActivate = fallbackLoansRes.data;
+      loanFetchError = fallbackLoansRes.error;
+    }
 
     if (loanFetchError) throw loanFetchError;
 
@@ -930,16 +994,24 @@ app.post('/api/schedules', async (req, res) => {
     // 4. Generate Weekly Collections PER MEMBER as 'Approved'
     const results = [];
     const errors = [];
+    let supportsScheduleSavingCols = true;
 
     // Loop through each member
     for (const loan of (loansToActivate || [])) {
       const memberAmount = Number(loan.amount_sanctioned) || 10000;
-      
+      const isSavingLoan = Boolean(loan.is_saving_plan) || String(loan.scheme_name || '').toLowerCase().includes('saving');
+
       let memberPlan;
       let multiplier = 1;
       let iterations = 12;
-      
-      if (loanPlans[String(memberAmount)]) {
+      let weeklySaving = 0;
+
+      if (isSavingLoan) {
+        memberPlan = saving10kPlan;
+        iterations = saving10kPlan.weeks; // 15 weeks
+        multiplier = 1;
+        weeklySaving = Number(loan.saving_per_week) || saving10kPlan.savingPerWeek;
+      } else if (loanPlans[String(memberAmount)]) {
         // If there's an exact plan match (e.g. 10000, 12000), use its exact amounts
         memberPlan = loanPlans[String(memberAmount)];
         iterations = memberPlan.weeks;
@@ -962,32 +1034,60 @@ app.post('/api/schedules', async (req, res) => {
 
         // Calculate member-specific installment for this week
         const currentAmount = memberPlan.amounts[i] * multiplier;
+        const currentSaving = isSavingLoan ? weeklySaving : 0;
+        const currentEmi = isSavingLoan ? Math.max(0, currentAmount - currentSaving) : currentAmount;
 
-        const { data: schedule, error } = await supabase
-          .from('collection_schedules')
-          .insert([{
-            center_id: Number(centerId),
-            center_name: centerName,
-            member_id: loan.id,
-            member_name: loan.member_name,
-            week_number: i + 1,
-            scheduled_date: finalSchDate,
-            scheduled_day: scheduledDayName,
-            amount: currentAmount,
-            status: 'Approved'
-          }])
-          .select()
-          .single();
+        const baseRow = {
+          center_id: Number(centerId),
+          center_name: centerName,
+          member_id: loan.id,
+          member_name: loan.member_name,
+          week_number: i + 1,
+          scheduled_date: finalSchDate,
+          scheduled_day: scheduledDayName,
+          amount: currentAmount,
+          status: 'Approved'
+        };
 
-        if (error) {
-          console.error('Insert error:', error);
-          errors.push(error.message);
+        let insertRes;
+        if (supportsScheduleSavingCols) {
+          insertRes = await supabase
+            .from('collection_schedules')
+            .insert([{
+              ...baseRow,
+              emi_amount: currentEmi,
+              saving_amount: currentSaving,
+              plan_name: memberPlan.name
+            }])
+            .select()
+            .single();
+
+          if (insertRes.error && /column|schema cache/i.test(insertRes.error.message || '')) {
+            supportsScheduleSavingCols = false;
+            insertRes = await supabase
+              .from('collection_schedules')
+              .insert([baseRow])
+              .select()
+              .single();
+          }
         } else {
-          results.push(schedule);
+          insertRes = await supabase
+            .from('collection_schedules')
+            .insert([baseRow])
+            .select()
+            .single();
+        }
+
+        if (insertRes.error) {
+          console.error('Insert error:', insertRes.error);
+          errors.push(insertRes.error.message);
+        } else {
+          results.push(insertRes.data);
         }
       }
     }
 
+    flushCache();
     res.json({
       message: `Center Activated! Generated ${results.length} member-level schedules for ${centerMeetingDay}s.`,
       count: results.length,
@@ -1045,6 +1145,106 @@ app.put('/api/schedules/:id/reject', async (req, res) => {
   }
 });
 
+// Helper: Credit weekly saving into member_savings ledger & loans.total_saving when collection is Received
+async function creditWeeklySavingsForSchedules(schedulesList, actorId) {
+  if (!Array.isArray(schedulesList) || schedulesList.length === 0) return;
+
+  try {
+    const memberOrLoanIds = [...new Set(schedulesList.map(s => s.member_id).filter(Boolean))];
+    if (memberOrLoanIds.length === 0) return;
+
+    // Fetch matching loans to check saving_per_week & scheme_name
+    const { data: loans } = await supabase
+      .from('loans')
+      .select('id, member_id, member_name, scheme_name, is_saving_plan, saving_per_week, total_saving')
+      .or(`id.in.(${memberOrLoanIds.join(',')}),member_id.in.(${memberOrLoanIds.join(',')})`);
+
+    const loanById = {};
+    const loanByMemberId = {};
+    (loans || []).forEach(l => {
+      if (l.id) loanById[String(l.id)] = l;
+      if (l.member_id) loanByMemberId[String(l.member_id)] = l;
+    });
+
+    const savingRows = [];
+    const loanIncrementMap = {};
+
+    for (const s of schedulesList) {
+      const loan = loanById[String(s.member_id)] || loanByMemberId[String(s.member_id)];
+      const isSavingLoan = Boolean(loan?.is_saving_plan) || String(loan?.scheme_name || s.plan_name || '').toLowerCase().includes('saving');
+      const savingAmt = Number(s.saving_amount) || (isSavingLoan ? (Number(loan?.saving_per_week) || 100) : 0);
+
+      if (savingAmt > 0 && loan?.id) {
+        savingRows.push({
+          loan_id: loan.id,
+          member_id: loan.member_id || null,
+          member_name: s.member_name || loan.member_name || 'Unknown',
+          center_id: s.center_id || null,
+          center_name: s.center_name || null,
+          schedule_id: s.id,
+          week_number: s.week_number || null,
+          transaction_type: 'WEEKLY_SAVING',
+          amount: savingAmt,
+          notes: `Week ${s.week_number || '?'} Saving Collection`,
+          created_by: actorId || 'Manager'
+        });
+        loanIncrementMap[loan.id] = (loanIncrementMap[loan.id] || 0) + savingAmt;
+      }
+    }
+
+    if (savingRows.length === 0) return;
+
+    // Check which schedule_ids already exist in member_savings so we never double-credit
+    const scheduleIds = savingRows.map(r => r.schedule_id).filter(Boolean);
+    const { data: existingRows, error: checkErr } = await supabase
+      .from('member_savings')
+      .select('schedule_id')
+      .in('schedule_id', scheduleIds);
+
+    if (checkErr) {
+      console.warn('member_savings check skipped (run add_saving_plan_setup.sql if table missing):', checkErr.message);
+      return;
+    }
+
+    const existingScheduleIds = new Set((existingRows || []).map(r => String(r.schedule_id)));
+    const newSavingRows = savingRows.filter(r => !existingScheduleIds.has(String(r.schedule_id)));
+
+    if (newSavingRows.length > 0) {
+      const { error: insErr } = await supabase
+        .from('member_savings')
+        .insert(newSavingRows);
+
+      if (insErr) {
+        console.warn('member_savings insert skipped:', insErr.message);
+        return;
+      }
+    }
+
+    // Recompute total_saving per loan from member_savings to keep it exact
+    const updatedLoanIds = Object.keys(loanIncrementMap);
+    for (const lid of updatedLoanIds) {
+      const { data: ledger } = await supabase
+        .from('member_savings')
+        .select('transaction_type, amount')
+        .eq('loan_id', Number(lid));
+
+      if (ledger) {
+        const netSaving = ledger.reduce((sum, r) => {
+          if (r.transaction_type === 'WEEKLY_SAVING') return sum + (Number(r.amount) || 0);
+          if (r.transaction_type === 'WITHDRAWAL') return sum - (Number(r.amount) || 0);
+          return sum;
+        }, 0);
+        await supabase
+          .from('loans')
+          .update({ total_saving: Math.max(0, netSaving) })
+          .eq('id', Number(lid));
+      }
+    }
+  } catch (err) {
+    console.warn('Saving credit helper warning:', err.message);
+  }
+}
+
 // Mark all schedules for a center on a specific date as received
 app.put('/api/schedules/receive-bulk', async (req, res) => {
   const { centerId, scheduledDate, staffId } = req.body;
@@ -1062,6 +1262,8 @@ app.put('/api/schedules/receive-bulk', async (req, res) => {
       .select();
 
     if (error) throw error;
+    await creditWeeklySavingsForSchedules(data, staffId);
+    flushCache();
     res.json({ message: `Successfully received ${data.length} schedules`, count: data.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1200,6 +1402,8 @@ app.put('/api/schedules/receive-staff-bulk', async (req, res) => {
       .select();
 
     if (error) throw error;
+    await creditWeeklySavingsForSchedules(data, managerId || 'Manager');
+    flushCache();
     res.json({ message: `Staff collections received: ${data.length}`, count: data.length });
   } catch (error) {
     console.error('Staff bulk receive error:', error);
@@ -1392,11 +1596,20 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
       .select('id, name, staff_id');
     if (centerError) throw centerError;
 
-    // 3. Fetch ALL schedules for the selected date
-    const { data: schedules, error: schError } = await supabase
+    // 3. Fetch ALL schedules for the selected date (include saving/emi breakdown with fallback)
+    let { data: schedules, error: schError } = await supabase
       .from('collection_schedules')
-      .select('id, center_id, center_name, member_id, member_name, amount, collected_amount, status, scheduled_date, approved_at, week_number')
+      .select('id, center_id, center_name, member_id, member_name, amount, emi_amount, saving_amount, collected_amount, status, scheduled_date, approved_at, week_number')
       .eq('scheduled_date', date);
+
+    if (schError && /column|schema cache/i.test(schError.message || '')) {
+      const fb = await supabase
+        .from('collection_schedules')
+        .select('id, center_id, center_name, member_id, member_name, amount, collected_amount, status, scheduled_date, approved_at, week_number')
+        .eq('scheduled_date', date);
+      schedules = fb.data;
+      schError = fb.error;
+    }
     if (schError) throw schError;
 
     // 3b. Fetch total loan amount for these members
@@ -1470,6 +1683,8 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
       staffMap[sid].centers[cid].members.push({
         member_name: s.member_name,
         amount: amt,
+        emi_amount: Number(s.emi_amount) || amt,
+        saving_amount: Number(s.saving_amount) || 0,
         total_loan: loansMap[`${s.member_id}_${s.member_name}`] || 0,
         collected: collAmt,
         status: s.status
@@ -1494,6 +1709,193 @@ app.get('/api/staff-daily-performance', cacheMiddleware(10), async (req, res) =>
     res.json({ date, staffPerformance: result });
   } catch (error) {
     console.error('Staff daily performance error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fetch all Saving Plan loans, STP, weekly savings progress, and ledger entries
+app.get('/api/savings', cacheMiddleware(10), async (req, res) => {
+  try {
+    let { data: savingLoans, error: loanErr } = await supabase
+      .from('loans')
+      .select('id, member_id, member_name, center_id, center_name, staff_id, staff_name, mobile_no, amount_sanctioned, scheme_name, status, is_saving_plan, stp_amount, saving_per_week, total_saving, sanctioned_at, created_at')
+      .or('is_saving_plan.eq.true,scheme_name.ilike.%saving%')
+      .order('id', { ascending: false });
+
+    if (loanErr && /column|schema cache/i.test(loanErr.message || '')) {
+      const fb = await supabase
+        .from('loans')
+        .select('id, member_id, member_name, center_id, center_name, staff_id, staff_name, mobile_no, amount_sanctioned, scheme_name, status, sanctioned_at, created_at')
+        .ilike('scheme_name', '%saving%')
+        .order('id', { ascending: false });
+      savingLoans = fb.data;
+      loanErr = fb.error;
+    }
+    if (loanErr) throw loanErr;
+
+    const loans = savingLoans || [];
+    if (loans.length === 0) {
+      return res.json({ members: [], summary: { totalMembers: 0, totalStp: 0, totalWeeklySaving: 0, totalWithdrawn: 0, netBalance: 0 }, sqlReady: true });
+    }
+
+    const loanIds = loans.map(l => l.id);
+
+    const [staffRes, centersRes, schedulesRes, ledgerRes] = await Promise.all([
+      supabase.from('staff').select('staff_id, branch, name'),
+      supabase.from('centers').select('id, name, staff_id'),
+      supabase.from('collection_schedules').select('id, member_id, week_number, amount, status, scheduled_date').in('member_id', loanIds),
+      supabase.from('member_savings').select('*').in('loan_id', loanIds).order('created_at', { ascending: false })
+    ]);
+
+    const sqlReady = !(ledgerRes.error && /relation|does not exist|schema cache/i.test(ledgerRes.error.message || ''));
+
+    const staffBranchMap = {};
+    (staffRes.data || []).forEach(st => {
+      if (st.staff_id) staffBranchMap[String(st.staff_id).trim().toLowerCase()] = st.branch || 'N/A';
+    });
+
+    const centerMap = {};
+    (centersRes.data || []).forEach(c => {
+      centerMap[c.id] = c;
+    });
+
+    const schedulesByLoan = {};
+    (schedulesRes.data || []).forEach(s => {
+      const key = String(s.member_id);
+      if (!schedulesByLoan[key]) schedulesByLoan[key] = [];
+      schedulesByLoan[key].push(s);
+    });
+
+    const ledgerByLoan = {};
+    (ledgerRes.data || []).forEach(entry => {
+      const key = String(entry.loan_id);
+      if (!ledgerByLoan[key]) ledgerByLoan[key] = [];
+      ledgerByLoan[key].push(entry);
+    });
+
+    let totalStp = 0;
+    let totalWeeklySaving = 0;
+    let totalWithdrawn = 0;
+
+    const members = loans.map(l => {
+      const cInfo = centerMap[l.center_id] || {};
+      const sid = l.staff_id || cInfo.staff_id;
+      const branch = sid ? (staffBranchMap[String(sid).trim().toLowerCase()] || 'N/A') : 'N/A';
+      const schs = schedulesByLoan[String(l.id)] || [];
+      const ledger = ledgerByLoan[String(l.id)] || [];
+
+      const receivedWeeks = schs.filter(s => s.status === 'Received').length;
+      const savingPerWeek = Number(l.saving_per_week) || 100;
+      const stpAmount = l.stp_amount !== undefined && l.stp_amount !== null ? Number(l.stp_amount) : 150;
+
+      // Compute from ledger if available, else derive from Received weeks
+      const ledgerStp = ledger.filter(e => e.transaction_type === 'STP').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const ledgerWeekly = ledger.filter(e => e.transaction_type === 'WEEKLY_SAVING').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const ledgerWithdrawn = ledger.filter(e => e.transaction_type === 'WITHDRAWAL').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+      const effectiveStp = ledgerStp > 0 ? ledgerStp : stpAmount;
+      const effectiveWeeklySaving = ledgerWeekly > 0 ? ledgerWeekly : (receivedWeeks * savingPerWeek);
+      const effectiveBalance = Math.max(0, effectiveWeeklySaving - ledgerWithdrawn);
+
+      totalStp += effectiveStp;
+      totalWeeklySaving += effectiveWeeklySaving;
+      totalWithdrawn += ledgerWithdrawn;
+
+      return {
+        loan_id: l.id,
+        member_id: l.member_id,
+        member_name: l.member_name,
+        mobile_no: l.mobile_no || null,
+        center_id: l.center_id,
+        center_name: l.center_name || cInfo.name || 'N/A',
+        branch,
+        staff_id: sid || 'N/A',
+        staff_name: l.staff_name || 'N/A',
+        scheme_name: l.scheme_name || '₹10,000 (Saving)',
+        amount_sanctioned: Number(l.amount_sanctioned) || 10000,
+        status: l.status,
+        stp_amount: effectiveStp,
+        saving_per_week: savingPerWeek,
+        total_weeks: schs.length || 15,
+        paid_weeks: receivedWeeks,
+        weekly_saving_collected: effectiveWeeklySaving,
+        withdrawn_amount: ledgerWithdrawn,
+        saving_balance: effectiveBalance,
+        ledger
+      };
+    });
+
+    res.json({
+      members,
+      summary: {
+        totalMembers: members.length,
+        totalStp,
+        totalWeeklySaving,
+        totalWithdrawn,
+        netBalance: Math.max(0, totalWeeklySaving - totalWithdrawn)
+      },
+      sqlReady
+    });
+  } catch (error) {
+    console.error('Savings fetch error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Record a manual Saving or Withdrawal or STP transaction
+app.post('/api/savings/transaction', async (req, res) => {
+  const { loanId, memberId, memberName, centerId, centerName, transactionType, amount, notes, staffId } = req.body;
+  const numAmount = Number(amount);
+
+  if (!loanId || !transactionType || !numAmount || numAmount <= 0) {
+    return res.status(400).json({ error: 'Valid loanId, transactionType, and positive amount are required.' });
+  }
+
+  if (!['STP', 'WEEKLY_SAVING', 'WITHDRAWAL'].includes(transactionType)) {
+    return res.status(400).json({ error: 'Invalid transactionType.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('member_savings')
+      .insert([{
+        loan_id: Number(loanId),
+        member_id: memberId ? Number(memberId) : null,
+        member_name: memberName || 'Unknown',
+        center_id: centerId ? Number(centerId) : null,
+        center_name: centerName || null,
+        transaction_type: transactionType,
+        amount: numAmount,
+        notes: notes || null,
+        created_by: staffId || 'Manager'
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Recompute loans.total_saving
+    const { data: ledger } = await supabase
+      .from('member_savings')
+      .select('transaction_type, amount')
+      .eq('loan_id', Number(loanId));
+
+    if (ledger) {
+      const netSaving = ledger.reduce((sum, r) => {
+        if (r.transaction_type === 'WEEKLY_SAVING') return sum + (Number(r.amount) || 0);
+        if (r.transaction_type === 'WITHDRAWAL') return sum - (Number(r.amount) || 0);
+        return sum;
+      }, 0);
+      await supabase
+        .from('loans')
+        .update({ total_saving: Math.max(0, netSaving) })
+        .eq('id', Number(loanId));
+    }
+
+    flushCache();
+    res.json({ message: 'Transaction recorded successfully', transaction: data });
+  } catch (error) {
+    console.error('Savings transaction error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,7 +1,9 @@
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
-const prodUrl = 'https://maneger-cantroll.onrender.com';
+// All backend requests go directly to Render cloud backend.
+// No local backend server or PM2 is required.
+const defaultRenderUrl = 'https://maneger-cantroll.onrender.com';
+const envUrl = import.meta.env.VITE_API_URL;
 
-export const API_URL = (isLocal ? 'http://localhost:5001' : prodUrl).replace(/\/$/, '');
+export const API_URL = (envUrl || defaultRenderUrl).replace(/\/$/, '');
 export const APP_NAME = import.meta.env.VITE_APP_NAME || 'Manager Control';
 
 console.log('--- Configuration Loaded ---');

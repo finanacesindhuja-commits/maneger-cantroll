@@ -902,14 +902,27 @@ app.post('/api/schedules', async (req, res) => {
     }
   };
 
-  // Dedicated 15-Week Standard Plan for ₹10,000 (Saving): ₹890 EMI + ₹100 Saving = ₹990/week
-  const saving10kPlan = {
-    name: "₹10,000 (Saving)",
-    weeks: 15,
-    emiPerWeek: 890,
-    savingPerWeek: 100,
-    amounts: Array(15).fill(990)
+  // Dedicated Plans for Saving Schemes:
+  // ₹10,000 (Saving): 15 weeks, ₹890 EMI + ₹100 Saving = ₹990/week
+  // ₹13,000 (Saving): 20 weeks, ₹890 EMI + ₹100 Saving = ₹990/week
+  const savingPlans = {
+    "10000": {
+      name: "₹10,000 (Saving)",
+      weeks: 15,
+      emiPerWeek: 890,
+      savingPerWeek: 100,
+      amounts: Array(15).fill(990)
+    },
+    "13000": {
+      name: "₹13,000 (Saving)",
+      weeks: 20,
+      emiPerWeek: 890,
+      savingPerWeek: 100,
+      amounts: Array(20).fill(990)
+    }
   };
+  const saving10kPlan = savingPlans["10000"];
+  const saving13kPlan = savingPlans["13000"];
 
   try {
     // 0. Fetch custom holidays from Supabase to merge with fallback list
@@ -1007,10 +1020,11 @@ app.post('/api/schedules', async (req, res) => {
       let weeklySaving = 0;
 
       if (isSavingLoan) {
-        memberPlan = saving10kPlan;
-        iterations = saving10kPlan.weeks; // 15 weeks
+        const is13k = memberAmount === 13000 || String(loan.scheme_name || '').includes('13000') || String(loan.scheme_name || '').includes('13,000');
+        memberPlan = is13k ? saving13kPlan : saving10kPlan;
+        iterations = memberPlan.weeks; // 20 weeks for 13k, 15 weeks for 10k
         multiplier = 1;
-        weeklySaving = Number(loan.saving_per_week) || saving10kPlan.savingPerWeek;
+        weeklySaving = Number(loan.saving_per_week) || memberPlan.savingPerWeek;
       } else if (loanPlans[String(memberAmount)]) {
         // If there's an exact plan match (e.g. 10000, 12000), use its exact amounts
         memberPlan = loanPlans[String(memberAmount)];
@@ -1812,12 +1826,12 @@ app.get('/api/savings', cacheMiddleware(10), async (req, res) => {
         branch,
         staff_id: sid || 'N/A',
         staff_name: l.staff_name || 'N/A',
-        scheme_name: l.scheme_name || '₹10,000 (Saving)',
+        scheme_name: l.scheme_name || (Number(l.amount_sanctioned) === 13000 ? '₹13,000 (Saving)' : '₹10,000 (Saving)'),
         amount_sanctioned: Number(l.amount_sanctioned) || 10000,
         status: l.status,
         stp_amount: effectiveStp,
         saving_per_week: savingPerWeek,
-        total_weeks: schs.length || 15,
+        total_weeks: schs.length || (Number(l.amount_sanctioned) === 13000 ? 20 : 15),
         paid_weeks: receivedWeeks,
         weekly_saving_collected: effectiveWeeklySaving,
         withdrawn_amount: ledgerWithdrawn,

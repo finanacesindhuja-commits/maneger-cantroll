@@ -53,6 +53,17 @@ export default function Loans() {
     { id: '11000_15w', value: 11000, label: '₹11,000 (15-Week Plan)' },
     { id: '12000_16w', value: 12000, label: '₹12,000 (16-Week Plan)' },
     { id: '13000_18w', value: 13000, label: '₹13,000 (18-Week Plan)' },
+    {
+      id: '13000_saving',
+      value: 13000,
+      label: '₹13,000 (Saving)',
+      isSaving: true,
+      weeks: 20,
+      weeklyAmount: 990,
+      emiAmount: 890,
+      savingPerWeek: 100,
+      defaultStp: 150
+    },
     { id: '15000_22w', value: 15000, label: '₹15,000 (22-Week Plan)' },
     { id: '20000', value: 20000, label: '₹20,000' }
   ];
@@ -361,30 +372,30 @@ export default function Loans() {
                   <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                        Saving Plan Breakdown (15-Week Standard)
+                        Saving Plan Breakdown ({selectedPlan.weeks}-Week Plan)
                       </span>
                       <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-full">
-                        ₹990 / Week × 15
+                        ₹{selectedPlan.weeklyAmount} / Week × {selectedPlan.weeks}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
                       <div className="bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
                         <p className="text-[9px] text-slate-400 font-bold uppercase">Weekly EMI</p>
-                        <p className="text-base font-black text-white mt-0.5">₹890</p>
-                        <p className="text-[9px] text-slate-500">15 Wks = ₹13,350</p>
+                        <p className="text-base font-black text-white mt-0.5">₹{selectedPlan.emiAmount}</p>
+                        <p className="text-[9px] text-slate-500">{selectedPlan.weeks} Wks = ₹{(selectedPlan.weeks * selectedPlan.emiAmount).toLocaleString('en-IN')}</p>
                       </div>
                       <div className="bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
                         <p className="text-[9px] text-slate-400 font-bold uppercase">Weekly Saving</p>
-                        <p className="text-base font-black text-emerald-400 mt-0.5">₹100</p>
-                        <p className="text-[9px] text-slate-500">15 Wks = ₹1,500</p>
+                        <p className="text-base font-black text-emerald-400 mt-0.5">₹{selectedPlan.savingPerWeek}</p>
+                        <p className="text-[9px] text-slate-500">{selectedPlan.weeks} Wks = ₹{(selectedPlan.weeks * selectedPlan.savingPerWeek).toLocaleString('en-IN')}</p>
                       </div>
                       <div className="col-span-2 sm:col-span-1 bg-[#0a0f1c]/70 border border-white/5 rounded-xl p-3">
                         <p className="text-[9px] text-slate-400 font-bold uppercase">Loan Interest + STP</p>
                         <p className="text-base font-black text-amber-400 mt-0.5">
-                          ₹{(3350 + (Number(stpAmount) || 0)).toLocaleString('en-IN')}
+                          ₹{(((selectedPlan.weeks * selectedPlan.emiAmount) - selectedPlan.value) + (Number(stpAmount) || 0)).toLocaleString('en-IN')}
                         </p>
-                        <p className="text-[9px] text-slate-500">₹3,350 + ₹{Number(stpAmount) || 0} STP</p>
+                        <p className="text-[9px] text-slate-500">₹{((selectedPlan.weeks * selectedPlan.emiAmount) - selectedPlan.value).toLocaleString('en-IN')} + ₹{Number(stpAmount) || 0} STP</p>
                       </div>
                     </div>
 

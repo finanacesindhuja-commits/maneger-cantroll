@@ -168,7 +168,7 @@ export default function Savings() {
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden sm:flex items-center gap-1.5 text-[10px] text-emerald-400 font-extrabold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-xl">
-              ₹10,000 (Saving) • 15 Wks @ ₹990
+              Saving Schemes • ₹10K & ₹13K @ ₹990/Wk
             </span>
             <button
               onClick={fetchSavings}
@@ -280,7 +280,7 @@ export default function Savings() {
                 ) : filteredMembers.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="px-6 py-20 text-center text-slate-500 font-bold">
-                      <span className="uppercase text-[10px] tracking-wider">No ₹10,000 (Saving) members found yet.</span>
+                      <span className="uppercase text-[10px] tracking-wider">No saving plan members found yet.</span>
                     </td>
                   </tr>
                 ) : filteredMembers.map((m) => {

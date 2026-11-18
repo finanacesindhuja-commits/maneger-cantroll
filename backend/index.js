@@ -955,14 +955,14 @@ app.post('/api/schedules', async (req, res) => {
     // 1. Get all eligible loans for this center that are in 'CREDITED' state
     let { data: loansToActivate, error: loanFetchError } = await supabase
       .from('loans')
-      .select('id, member_name, amount_sanctioned, scheme_name, is_saving_plan, saving_per_week')
+      .select('id, member_id, member_name, amount_sanctioned, scheme_name, is_saving_plan, saving_per_week')
       .eq('center_id', Number(centerId))
       .eq('status', 'CREDITED');
 
     if (loanFetchError && /column|schema cache/i.test(loanFetchError.message || '')) {
       const fallbackLoansRes = await supabase
         .from('loans')
-        .select('id, member_name, amount_sanctioned, scheme_name')
+        .select('id, member_id, member_name, amount_sanctioned, scheme_name')
         .eq('center_id', Number(centerId))
         .eq('status', 'CREDITED');
       loansToActivate = fallbackLoansRes.data;
@@ -1040,7 +1040,8 @@ app.post('/api/schedules', async (req, res) => {
         const baseRow = {
           center_id: Number(centerId),
           center_name: centerName,
-          member_id: loan.id,
+          loan_id: loan.id,
+          member_id: loan.member_id || loan.id,
           member_name: loan.member_name,
           week_number: i + 1,
           scheduled_date: finalSchDate,
